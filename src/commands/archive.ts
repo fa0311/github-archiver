@@ -21,7 +21,7 @@ export default class Download extends Command {
 		const { input } = args;
 		const { owner, repo, url } = parseGitHubRepositoryUrl(input);
 		this.log(`Cloning repository ${owner}/${repo}...`);
-		const git = await createGitSpawn("git", path.join("archive", owner, repo));
+		const git = await createGitSpawn("git", path.join("archive", owner, repo), process.env);
 		if (await git.has()) {
 			await git.fetch();
 		} else {

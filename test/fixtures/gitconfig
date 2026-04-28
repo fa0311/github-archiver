@@ -1,0 +1,7 @@
+[user]
+	name = GitHub Archiver Test
+	email = github-archiver-test@example.com
+[commit]
+	gpgsign = false
+[tag]
+	gpgsign = false

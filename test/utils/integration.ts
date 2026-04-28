@@ -15,6 +15,7 @@ export const createIntegration = (): Integration => {
 			cleanup.push(() => fs.promises.rm(tempDir, { recursive: true, force: true }));
 
 			const temp = path.join(tempDir, "temp");
+			await fs.promises.mkdir(temp, { recursive: true });
 			return temp;
 		},
 		afterEachCall: async () => {
