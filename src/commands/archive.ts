@@ -1,6 +1,10 @@
-import path from "node:path";
-import { Args, Command } from "@oclif/core";
-import { createGitSpawn, parseGitHubRepositoryUrl } from "../utils/git.js";
+import { Args, Command, Flags } from "@oclif/core";
+import chalk from "chalk";
+import { catchError } from "../utils/catch.ts";
+import { parseEnv } from "../utils/env.ts";
+import { createGitSpawn, parseGitHubRepositoryUrl } from "../utils/git.ts";
+import { title } from "../utils/info.ts";
+import { placeholder } from "../utils/placeholder.ts";
 
 export default class Download extends Command {
 	static description = "Download galleries by ID or URL";
@@ -11,23 +15,46 @@ export default class Download extends Command {
 		input: Args.string({
 			required: true,
 			description: "http(s) URL or gallery ID to download",
+			multiple: true,
 		}),
 	};
 
-	static flags = {};
+	static flags = {
+		output: Flags.string({
+			char: "o",
+			description: "Output directory",
+			default: "archives/{owner}/{repo}",
+		}),
+		help: Flags.help(),
+		version: Flags.version(),
+	};
 
 	async run() {
-		const { args } = await this.parse(Download);
+		this.log(title("GitHub Archiver"));
+		const { args, flags } = await this.parse(Download);
 		const { input } = args;
-		const { owner, repo, url } = parseGitHubRepositoryUrl(input);
-		this.log(`Cloning repository ${owner}/${repo}...`);
-		const git = await createGitSpawn("git", path.join("archive", owner, repo), process.env);
-		if (await git.has()) {
-			await git.fetch();
-		} else {
-			await git.clone(url);
-		}
+		const { output } = flags;
 
-		this.log("Download complete.");
+		const parsedInputs = input.map(parseGitHubRepositoryUrl);
+
+		const env = await parseEnv();
+		const git = await createGitSpawn(env.GIT_PATH, { env });
+
+		for (const { owner, repo, url } of parsedInputs) {
+			const repository = git.repository(placeholder(output, { owner, repo }));
+
+			if (await repository.has()) {
+				this.log(`Fetching latest changes for ${owner}/${repo}...`);
+				await repository.fetch();
+			} else {
+				this.log(`Cloning repository ${owner}/${repo}...`);
+				await repository.clone(url);
+			}
+		}
+		this.log(chalk.green("Archive completed successfully"));
+	}
+
+	async catch(error: Error) {
+		this.log(catchError(error));
 	}
 }

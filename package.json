@@ -1,69 +1,80 @@
 {
-  "name": "github-archiver",
-  "description": "A new CLI generated with oclif",
-  "version": "0.0.0",
-  "author": "ふぁ",
-  "license": "MIT",
-  "type": "module",
-  "scripts": {
-    "build": "shx rm -rf dist && tsc -b",
-    "dev": "node ./bin/dev.js",
-    "start": "node ./bin/run.js",
-    "check": "biome check .",
-    "format": "biome check --write .",
-    "test": "vitest run --passWithNoTests",
-    "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
-    "prepack": "oclif manifest && oclif readme",
-    "postpack": "shx rm -f oclif.manifest.json",
-    "version": "oclif readme && git add README.md"
-  },
-  "bin": {
-    "github-archiver": "./bin/run.js"
-  },
-  "bugs": "https://github.com/app/github-archiver/issues",
-  "dependencies": {
-    "@oclif/core": "^4.10.6",
-    "@oclif/plugin-help": "^6.2.45",
-    "@oclif/plugin-plugins": "^5.4.62"
-  },
-  "devDependencies": {
-    "@biomejs/biome": "2.4.13",
-    "@types/node": "^24.12.2",
-    "oclif": "^4.23.0",
-    "shx": "^0.4.0",
-    "ts-node": "^10.9.2",
-    "typescript": "^6.0.3",
-    "vitest": "4.1.5"
-  },
-  "engines": {
-    "node": ">=22.0.0"
-  },
-  "files": [
-    "./bin",
-    "./dist",
-    "./oclif.manifest.json"
-  ],
-  "homepage": "https://github.com/app/github-archiver",
-  "keywords": [
-    "oclif"
-  ],
-  "main": "dist/index.js",
-  "oclif": {
-    "bin": "github-archiver",
-    "dirname": "github-archiver",
-    "commands": "./dist/commands",
-    "plugins": [
-      "@oclif/plugin-help",
-      "@oclif/plugin-plugins"
-    ],
-    "topicSeparator": " ",
-    "topics": {
-      "hello": {
-        "description": "Say hello to the world and others"
-      }
-    }
-  },
-  "repository": "app/github-archiver",
-  "types": "dist/index.d.ts"
+	"name": "github-archiver",
+	"description": "A new CLI generated with oclif",
+	"version": "0.0.0",
+	"author": "ふぁ",
+	"license": "MIT",
+	"type": "module",
+	"scripts": {
+		"build": "shx rm -rf dist && tsc -b",
+		"build:readme": "oclif readme --readme-path COMMANDS.md",
+		"start": "node ./bin/run.js",
+		"dev": "node ./bin/dev.js",
+		"check": "biome check .",
+		"format": "biome check --write .",
+		"test": "vitest",
+		"test:run": "vitest run",
+		"test:unit": "vitest run --config vitest.config.ts",
+		"test:integration": "vitest run --config vitest.integration.config.ts"
+	},
+	"bin": {
+		"github-archiver": "./bin/run.js"
+	},
+	"bugs": "https://github.com/app/github-archiver/issues",
+	"dependencies": {
+		"@oclif/core": "^4.10.6",
+		"@oclif/plugin-help": "^6.2.45",
+		"@oclif/plugin-plugins": "^5.4.62",
+		"boxen": "^8.0.1",
+		"chalk": "^5.6.2",
+		"cli-truncate": "^6.0.0",
+		"cron": "^4.4.0",
+		"dotenv": "^17.4.2",
+		"error-stack-parser": "^2.1.4",
+		"jsonc-parser": "^3.3.1",
+		"log-symbols": "^7.0.1",
+		"pino": "^10.3.1",
+		"pino-pretty": "^13.1.3",
+		"string-width": "^8.2.1",
+		"zod": "^4.4.1"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.4.13",
+		"@types/node": "^24.12.2",
+		"oclif": "^4.23.0",
+		"shx": "^0.4.0",
+		"ts-node": "^10.9.2",
+		"typescript": "^6.0.3",
+		"vitest": "4.1.5"
+	},
+	"engines": {
+		"node": ">=22.0.0"
+	},
+	"files": [
+		"./bin",
+		"./dist",
+		"./oclif.manifest.json"
+	],
+	"homepage": "https://github.com/app/github-archiver",
+	"keywords": [
+		"oclif"
+	],
+	"main": "dist/index.js",
+	"oclif": {
+		"bin": "github-archiver",
+		"dirname": "github-archiver",
+		"commands": "./dist/commands",
+		"plugins": [
+			"@oclif/plugin-help",
+			"@oclif/plugin-plugins"
+		],
+		"topicSeparator": " ",
+		"topics": {
+			"hello": {
+				"description": "Say hello to the world and others"
+			}
+		}
+	},
+	"repository": "app/github-archiver",
+	"types": "dist/index.d.ts"
 }

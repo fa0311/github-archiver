@@ -60,16 +60,17 @@ describe("createGitSpawn", () => {
 		await fs.promises.mkdir(sourcePath, { recursive: true });
 
 		const git = await createGit(sourcePath, archivePath);
-		const archive = await createGitSpawn("git", archivePath, git.env);
+		const archive = await createGitSpawn("git", { env: git.env });
 		const base = await git.commit("README.md", "# fixture\n");
+		const repository = archive.repository(archivePath);
 
 		const clone = async () => {
-			expect(await archive.has()).toBe(false);
-			await archive.clone(sourcePath);
-			expect(await archive.has()).toBe(true);
+			expect(await repository.has()).toBe(false);
+			await repository.clone(sourcePath);
+			expect(await repository.has()).toBe(true);
 		};
 
-		return { archive, base, git, clone };
+		return { archive, repository, base, git, clone };
 	};
 
 	it("clones a mirror with local branches and tags", async () => {
@@ -87,7 +88,7 @@ describe("createGitSpawn", () => {
 	});
 
 	it("fetches branches and tags created after the mirror clone", async () => {
-		const { archive, base, git, clone } = await createArchive();
+		const { repository, base, git, clone } = await createArchive();
 
 		await clone();
 
@@ -95,28 +96,28 @@ describe("createGitSpawn", () => {
 		const newTip = await git.commit("new-branch.txt", "new branch\n");
 		await git.run("tag", "new-tag", newTip);
 		await git.run("checkout", "main");
-		await archive.fetch();
+		await repository.fetch();
 
 		await expect(git.ref("refs/heads/new-branch")).resolves.toBe(newTip);
 		await expect(git.ref("refs/tags/new-tag")).resolves.toBe(newTip);
 	});
 
 	it("mirrors a default branch change", async () => {
-		const { archive, base, git, clone } = await createArchive();
+		const { repository, base, git, clone } = await createArchive();
 
 		await clone();
 		await expect(git.symbolicRef("HEAD")).resolves.toBe("refs/heads/main");
 
 		await git.run("checkout", "-b", "new-default", base);
 		const newDefaultTip = await git.commit("default.txt", "new default\n");
-		await archive.fetch();
+		await repository.fetch();
 
 		await expect(git.symbolicRef("HEAD")).resolves.toBe("refs/heads/new-default");
 		await expect(git.ref("HEAD")).resolves.toBe(newDefaultTip);
 	});
 
 	it("prunes deleted branches", async () => {
-		const { archive, base, git, clone } = await createArchive();
+		const { repository, base, git, clone } = await createArchive();
 
 		await git.run("checkout", "-b", "deleted-branch", base);
 		await git.commit("deleted.txt", "delete me\n");
@@ -125,26 +126,26 @@ describe("createGitSpawn", () => {
 		await expect(git.hasRef("refs/heads/deleted-branch")).resolves.toBe(true);
 
 		await git.run("branch", "-D", "deleted-branch");
-		await archive.fetch();
+		await repository.fetch();
 
 		await expect(git.hasRef("refs/heads/deleted-branch")).resolves.toBe(false);
 	});
 
 	it("prunes deleted tags", async () => {
-		const { archive, base, git, clone } = await createArchive();
+		const { repository, base, git, clone } = await createArchive();
 
 		await git.run("tag", "deleted-tag", base);
 		await clone();
 		await expect(git.hasRef("refs/tags/deleted-tag")).resolves.toBe(true);
 
 		await git.run("tag", "-d", "deleted-tag");
-		await archive.fetch();
+		await repository.fetch();
 
 		await expect(git.hasRef("refs/tags/deleted-tag")).resolves.toBe(false);
 	});
 
 	it("mirrors a force-pushed branch", async () => {
-		const { archive, base, git, clone } = await createArchive();
+		const { repository, base, git, clone } = await createArchive();
 
 		await git.run("checkout", "-b", "force-updated-branch", base);
 		await git.commit("force.txt", "old 1\n");
@@ -155,14 +156,14 @@ describe("createGitSpawn", () => {
 		await git.run("reset", "--hard", base);
 		const newTip = await git.commit("force.txt", "new\n");
 		await git.run("checkout", "main");
-		await archive.fetch();
+		await repository.fetch();
 
 		await expect(git.ref("refs/heads/force-updated-branch")).resolves.toBe(newTip);
 		expect(newTip).not.toBe(oldTip);
 	});
 
 	it("mirrors a moved tag", async () => {
-		const { archive, base, git, clone } = await createArchive();
+		const { repository, base, git, clone } = await createArchive();
 
 		await git.run("tag", "moved-tag", base);
 		await clone();
@@ -170,13 +171,13 @@ describe("createGitSpawn", () => {
 
 		const newTip = await git.commit("tag-target.txt", "new tag target\n");
 		await git.run("tag", "-f", "moved-tag", newTip);
-		await archive.fetch();
+		await repository.fetch();
 
 		await expect(git.ref("refs/tags/moved-tag")).resolves.toBe(newTip);
 	});
 
 	it("mirrors a branch deleted and recreated with the same name", async () => {
-		const { archive, base, git, clone } = await createArchive();
+		const { repository, base, git, clone } = await createArchive();
 
 		await git.run("checkout", "-b", "recreated-branch", base);
 		const oldTip = await git.commit("recreated.txt", "old\n");
@@ -188,7 +189,7 @@ describe("createGitSpawn", () => {
 		await git.run("checkout", "-b", "recreated-branch", base);
 		const newTip = await git.commit("recreated.txt", "new\n");
 		await git.run("checkout", "main");
-		await archive.fetch();
+		await repository.fetch();
 
 		await expect(git.ref("refs/heads/recreated-branch")).resolves.toBe(newTip);
 		expect(newTip).not.toBe(oldTip);

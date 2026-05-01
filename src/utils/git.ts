@@ -3,7 +3,7 @@ import fs from "node:fs";
 
 export const parseGitHubRepositoryUrl = (url: string) => {
 	const github = new URLPattern({
-		protocol: "https:",
+		protocol: "(https?|git|ssh)",
 		hostname: "github.com",
 		pathname: "/:owner/:repo{.git}?",
 	});
@@ -15,65 +15,107 @@ export const parseGitHubRepositoryUrl = (url: string) => {
 	throw new Error("Invalid GitHub repository URL");
 };
 
-export const createGitSpawn = async (git: string, path: string, env: NodeJS.ProcessEnv) => {
-	const run = async (args: string[]) => {
-		const result = await new Promise<string>((resolve, reject) => {
-			const child = spawn(git, args, { stdio: ["inherit", "pipe", "inherit"], env });
-			let output = "";
+type RunOptions = {
+	env: Record<string, string>;
+	input?: string;
+	stdout?: (chunk: string) => void;
+	stderr?: (chunk: string) => void;
+};
 
-			child.stdout.setEncoding("utf8");
-			child.stdout.on("data", (chunk) => {
-				output += chunk;
-			});
-			child.once("error", reject);
-			child.once("close", (code, signal) => {
-				if (code === 0) {
-					resolve(output);
-					return;
-				}
+const run = async (commands: string[], options: RunOptions) => {
+	const [stdout, stderr] = await new Promise<[string, string]>((resolve, reject) => {
+		const child = spawn(commands[0], commands.slice(1), {
+			stdio: ["pipe", "pipe", "pipe"],
+			env: options.env,
+		});
+		const output = ["", ""] as [string, string];
 
-				reject(new Error(`failed: ${signal ?? code}`));
-			});
+		child.stdout.setEncoding("utf8");
+		child.stderr.setEncoding("utf8");
+		if (options.input) {
+			child.stdin.write(options.input);
+		}
+
+		child.stdout.on("data", (chunk) => {
+			options.stdout?.(chunk);
+			output[0] += chunk;
+		});
+		child.stderr.on("data", (chunk) => {
+			options.stderr?.(chunk);
+			output[1] += chunk;
 		});
 
-		const symbolicRef = (name: string) => {
-			for (const line of result.split("\n")) {
-				const [ref, target] = line.split("\t", 2);
-				if (target === name && ref.startsWith("ref: ")) {
-					return ref.slice("ref: ".length);
-				}
+		child.once("error", reject);
+		child.once("close", (code, signal) => {
+			if (code === 0) {
+				resolve(output);
+				return;
 			}
-		};
-		return { result, symbolicRef };
-	};
 
-	return {
-		has: async () => {
-			return fs.existsSync(path);
-		},
-		clone: async (url: string) => {
-			return run(["clone", "--mirror", url, path]);
-		},
-		fetch: async () => {
-			await run([
-				"-c",
-				"gc.auto=0",
-				"-C",
-				path,
-				"fetch",
-				"origin",
-				"--atomic",
-				"--prune",
-				"--prune-tags",
-				"--show-forced-updates",
-				"+refs/heads/*:refs/heads/*",
-				"+refs/tags/*:refs/tags/*",
-			]);
-			const output = await run(["-C", path, "ls-remote", "--symref", "origin", "HEAD"]);
-			const head = output.symbolicRef("HEAD");
-			if (head) {
-				await run(["-C", path, "symbolic-ref", "HEAD", head]);
+			reject(new Error(`failed: ${signal ?? code}`));
+		});
+	});
+
+	const symbolicRef = (name: string) => {
+		for (const line of stdout.split("\n")) {
+			const [ref, target] = line.split("\t", 2);
+			if (target === name && ref.startsWith("ref: ")) {
+				return ref.slice("ref: ".length);
 			}
+		}
+	};
+	return { stdout, stderr, symbolicRef };
+};
+
+export const createGhSpawn = async (gh: string, options: RunOptions) => {
+	return {
+		setup: async () => {
+			await run([gh, "auth", "setup-git"], options);
+		},
+		api: async (path: string, jq: string) => {
+			const { stdout } = await run([gh, "api", "--paginate", path, "--jq", jq], options);
+			return stdout.trim().split("\n").filter(Boolean);
+		},
+	};
+};
+
+export const createGitSpawn = async (git: string, options: RunOptions) => {
+	return {
+		repository: (path: string) => {
+			return {
+				has: async () => {
+					return fs.existsSync(path);
+				},
+				clone: async (url: string) => {
+					return run([git, "clone", "--mirror", url, path], options);
+				},
+				fetch: async () => {
+					await run(
+						[
+							git,
+							"-c",
+							"gc.auto=0",
+							"-C",
+							path,
+							"fetch",
+							"origin",
+							"--atomic",
+							"--prune",
+							"--show-forced-updates",
+							"+refs/*:refs/*",
+						],
+						options,
+					);
+					const output = await run(
+						[git, "-C", path, "ls-remote", "--symref", "origin", "HEAD"],
+						options,
+					);
+					const head = output.symbolicRef("HEAD");
+					if (head) {
+						await run([git, "-C", path, "symbolic-ref", "HEAD", head], options);
+					}
+				},
+			};
 		},
 	};
 };
