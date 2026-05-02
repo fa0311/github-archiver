@@ -86,7 +86,6 @@ graph TB
 ## Error Handling Strategy
 
 - Validation errors are wrapped in `GitHubArchiverZodParseError`.
-- Per-repository failures are wrapped in `GitHubArchiverRepositoryError`.
 - CLI execution collects repository failures and reports them together.
 - Scheduled execution logs per-repository failures and continues through the remaining repositories.
 
