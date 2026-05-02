@@ -2,39 +2,54 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadCheckpoint, pathExists } from "../../../src/utils/checkpoint.ts";
+import { parseConfig } from "../../../src/utils/config.ts";
 
-describe("checkpoint", () => {
+describe("parseConfig", () => {
 	let tempDir: string;
 
 	beforeEach(async () => {
-		tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "github-archiver-checkpoint-"));
+		tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "github-archiver-config-"));
 	});
 
 	afterEach(async () => {
 		await fs.promises.rm(tempDir, { recursive: true, force: true });
 	});
 
-	it("loads owner/repo keys from a checkpoint file", async () => {
-		const file = path.join(tempDir, ".checkpoint");
-		await fs.promises.writeFile(file, "octocat/Hello-World\n\n github/docs \n", "utf8");
+	it("parses JSONC schedule config and applies defaults", async () => {
+		const file = path.join(tempDir, "schedule.jsonc");
+		await fs.promises.writeFile(
+			file,
+			`{
+				// scheduler config
+				"cron": "0 0 * * *",
+				"queries": [
+					{ "type": "url", "url": "https://github.com/octocat/Hello-World" }
+				]
+			}
+			`,
+			"utf8",
+		);
 
-		await expect(loadCheckpoint(file)).resolves.toEqual(["octocat/Hello-World", "github/docs"]);
+		await expect(parseConfig(file)).resolves.toEqual({
+			cron: "0 0 * * *",
+			runOnInit: false,
+			queries: [{ type: "url", url: "https://github.com/octocat/Hello-World" }],
+			output: "archives/{owner}/{repo}",
+		});
 	});
 
-	it("returns an empty list when no checkpoint is configured", async () => {
-		await expect(loadCheckpoint(undefined)).resolves.toEqual([]);
-	});
+	it("rejects removed schedule options", async () => {
+		const file = path.join(tempDir, "schedule.jsonc");
+		await fs.promises.writeFile(
+			file,
+			JSON.stringify({
+				cron: "0 0 * * *",
+				queries: [{ type: "url", url: "https://github.com/octocat/Hello-World" }],
+				checkpoint: "data/.checkpoint",
+			}),
+			"utf8",
+		);
 
-	it("returns an empty list when the checkpoint does not exist", async () => {
-		await expect(loadCheckpoint(path.join(tempDir, "missing"))).resolves.toEqual([]);
-	});
-
-	it("checks path existence", async () => {
-		const file = path.join(tempDir, "file");
-		await fs.promises.writeFile(file, "x", "utf8");
-
-		await expect(pathExists(file)).resolves.toBe(true);
-		await expect(pathExists(path.join(tempDir, "missing"))).resolves.toBe(false);
+		await expect(parseConfig(file)).rejects.toThrowError(/Failed to parse config file/);
 	});
 });
