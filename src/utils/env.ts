@@ -1,11 +1,10 @@
 import "dotenv/config";
 import { z } from "zod";
+import { GitHubArchiverZodParseError } from "./error.ts";
 
 const envSchema = z
 	.object({
-		LOG_LEVEL: z
-			.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
-			.default("info"),
+		LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
 		LOG_COLOR: z
 			.string()
 			.transform((val) => val.toLowerCase() === "true")
@@ -20,6 +19,9 @@ const envSchema = z
 	.catchall(z.string());
 
 export const parseEnv = async () => {
-	const parsed = await envSchema.parseAsync(process.env);
-	return parsed;
+	const parsed = await envSchema.safeParseAsync(process.env);
+	if (parsed.success) {
+		return parsed.data;
+	}
+	throw new GitHubArchiverZodParseError("Failed to parse environment variables", parsed.error);
 };

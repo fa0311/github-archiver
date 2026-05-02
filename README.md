@@ -1,397 +1,192 @@
-github-archiver
-=================
+# GitHub Archiver
 
-A new CLI generated with oclif
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+A powerful CLI tool for archiving GitHub repositories as local mirror clones. Features scheduled execution, GitHub API queries, checkpoint support, and flexible existing-archive handling.
 
-[![oclif](https://img.shields.io/badge/cli-oclif-brightgreen.svg)](https://oclif.io)
-[![Version](https://img.shields.io/npm/v/github-archiver.svg)](https://npmjs.org/package/github-archiver)
-[![Downloads/week](https://img.shields.io/npm/dw/github-archiver.svg)](https://npmjs.org/package/github-archiver)
+## ✨ Features
 
+- **Command Line Archiving**: Archive one or more GitHub repositories by URL
+- **Scheduler**: Automate periodic archive tasks with cron expressions
+- **GitHub API Queries**: Archive starred repositories, user repositories, organization repositories, and more
+- **Checkpoint System**: Skip repositories already completed in long archive runs
+- **Mirror Sync**: Preserve branches, tags, deleted refs, force-pushed refs, and default branch changes
+- **Existing Archive Control**: Fetch, skip, overwrite, or error when output already exists
+- **Flexible Output**: Use `{owner}` and `{repo}` placeholders
+- **Docker Support**: Run as a one-off CLI or long-running scheduler
 
-<!-- toc -->
-* [Usage](#usage)
-* [Commands](#commands)
-<!-- tocstop -->
-# Usage
-<!-- usage -->
-```sh-session
-$ npm install -g github-archiver
-$ github-archiver COMMAND
-running command...
-$ github-archiver (--version)
-github-archiver/0.0.0 linux-x64 node-v22.22.2
-$ github-archiver --help [COMMAND]
-USAGE
-  $ github-archiver COMMAND
-...
-```
-<!-- usagestop -->
-# Commands
-<!-- commands -->
-* [`github-archiver hello PERSON`](#github-archiver-hello-person)
-* [`github-archiver hello world`](#github-archiver-hello-world)
-* [`github-archiver help [COMMAND]`](#github-archiver-help-command)
-* [`github-archiver plugins`](#github-archiver-plugins)
-* [`github-archiver plugins add PLUGIN`](#github-archiver-plugins-add-plugin)
-* [`github-archiver plugins:inspect PLUGIN...`](#github-archiver-pluginsinspect-plugin)
-* [`github-archiver plugins install PLUGIN`](#github-archiver-plugins-install-plugin)
-* [`github-archiver plugins link PATH`](#github-archiver-plugins-link-path)
-* [`github-archiver plugins remove [PLUGIN]`](#github-archiver-plugins-remove-plugin)
-* [`github-archiver plugins reset`](#github-archiver-plugins-reset)
-* [`github-archiver plugins uninstall [PLUGIN]`](#github-archiver-plugins-uninstall-plugin)
-* [`github-archiver plugins unlink [PLUGIN]`](#github-archiver-plugins-unlink-plugin)
-* [`github-archiver plugins update`](#github-archiver-plugins-update)
+## 📚 Quick Start
 
-## `github-archiver hello PERSON`
+```bash
+# Archive a repository
+github-archiver archive https://github.com/fa0311/github-archiver
 
-Say hello
-
-```
-USAGE
-  $ github-archiver hello PERSON -f <value>
-
-ARGUMENTS
-  PERSON  Person to say hello to
-
-FLAGS
-  -f, --from=<value>  (required) Who is saying hello
-
-DESCRIPTION
-  Say hello
-
-EXAMPLES
-  $ github-archiver hello friend --from oclif
-  hello friend from oclif! (./src/commands/hello/index.ts)
+# Run scheduled archiving
+github-archiver schedule schedule.json
 ```
 
-_See code: [src/commands/hello/index.ts](https://github.com/app/github-archiver/blob/v0.0.0/src/commands/hello/index.ts)_
+For detailed command options, see [COMMANDS.md](COMMANDS.md).
 
-## `github-archiver hello world`
+### Build from Source
 
-Say hello world
-
-```
-USAGE
-  $ github-archiver hello world
-
-DESCRIPTION
-  Say hello world
-
-EXAMPLES
-  $ github-archiver hello world
-  hello world! (./src/commands/hello/world.ts)
+```bash
+git clone https://github.com/fa0311/github-archiver.git
+cd github-archiver
+pnpm install
+pnpm build
 ```
 
-_See code: [src/commands/hello/world.ts](https://github.com/app/github-archiver/blob/v0.0.0/src/commands/hello/world.ts)_
+## 🐳 Docker Usage
 
-## `github-archiver help [COMMAND]`
+### CLI Usage
 
-Display help for github-archiver.
-
-```
-USAGE
-  $ github-archiver help [COMMAND...] [-n]
-
-ARGUMENTS
-  [COMMAND...]  Command to show help for.
-
-FLAGS
-  -n, --nested-commands  Include all nested commands in the output.
-
-DESCRIPTION
-  Display help for github-archiver.
+```bash
+docker pull ghcr.io/fa0311/github-archiver:latest-cli
+docker run --rm -e GH_TOKEN=github_pat_xxx -v ${PWD}/archives:/app/archives ghcr.io/fa0311/github-archiver:latest-cli archive https://github.com/fa0311/github-archiver
 ```
 
-_See code: [@oclif/plugin-help](https://github.com/oclif/plugin-help/blob/6.2.45/src/commands/help.ts)_
+### Scheduler Usage
 
-## `github-archiver plugins`
+Use docker-compose for scheduled archiving:
 
-List installed plugins.
+1. Create `schedule.json` (see configuration example below)
 
-```
-USAGE
-  $ github-archiver plugins [--json] [--core]
+2. Start with docker-compose
 
-FLAGS
-  --core  Show core plugins.
-
-GLOBAL FLAGS
-  --json  Format output as json.
-
-DESCRIPTION
-  List installed plugins.
-
-EXAMPLES
-  $ github-archiver plugins
+```bash
+docker-compose up -d
 ```
 
-_See code: [@oclif/plugin-plugins](https://github.com/oclif/plugin-plugins/blob/5.4.62/src/commands/plugins/index.ts)_
+## ⚙️ Configuration
 
-## `github-archiver plugins add PLUGIN`
+### Schedule Configuration File (`schedule.json`)
 
-Installs a plugin into github-archiver.
-
-```
-USAGE
-  $ github-archiver plugins add PLUGIN... [--json] [-f] [-h] [-s | -v]
-
-ARGUMENTS
-  PLUGIN...  Plugin to install.
-
-FLAGS
-  -f, --force    Force npm to fetch remote resources even if a local copy exists on disk.
-  -h, --help     Show CLI help.
-  -s, --silent   Silences npm output.
-  -v, --verbose  Show verbose npm output.
-
-GLOBAL FLAGS
-  --json  Format output as json.
-
-DESCRIPTION
-  Installs a plugin into github-archiver.
-
-  Uses npm to install plugins.
-
-  Installation of a user-installed plugin will override a core plugin.
-
-  Use the GITHUB_ARCHIVER_NPM_LOG_LEVEL environment variable to set the npm loglevel.
-  Use the GITHUB_ARCHIVER_NPM_REGISTRY environment variable to set the npm registry.
-
-ALIASES
-  $ github-archiver plugins add
-
-EXAMPLES
-  Install a plugin from npm registry.
-
-    $ github-archiver plugins add myplugin
-
-  Install a plugin from a github url.
-
-    $ github-archiver plugins add https://github.com/someuser/someplugin
-
-  Install a plugin from a github slug.
-
-    $ github-archiver plugins add someuser/someplugin
+```jsonc
+{
+  "cron": "0 0 * * *", // Cron expression (required)
+  "runOnInit": false, // Execute immediately on startup
+  "queries": [
+    {
+      "type": "url",
+      "url": "https://github.com/fa0311/github-archiver"
+    },
+    {
+      "type": "api",
+      "path": "/user/starred",
+      "jq": ".[].clone_url"
+    },
+    {
+      "type": "api",
+      "path": "/user/repos",
+      "jq": ".[].clone_url"
+    }
+  ],
+  "output": "archives/{owner}/{repo}", // Output path (placeholders available)
+  "ifExists": "fetch", // Existing archive behavior: fetch/skip/overwrite/error
+  "checkpoint": "data/.checkpoint" // Optional checkpoint file path
+}
 ```
 
-## `github-archiver plugins:inspect PLUGIN...`
+For detailed configuration schema, see [src/utils/config.ts](src/utils/config.ts).
 
-Displays installation properties of a plugin.
+### Environment Variables
 
-```
-USAGE
-  $ github-archiver plugins inspect PLUGIN...
+Can be set via `.env` file or system environment variables.
 
-ARGUMENTS
-  PLUGIN...  [default: .] Plugin to inspect.
+#### GitHub Settings (All commands)
 
-FLAGS
-  -h, --help     Show CLI help.
-  -v, --verbose
+```bash
+# Required for GitHub CLI API queries and private repositories
+GH_TOKEN=github_pat_xxx
 
-GLOBAL FLAGS
-  --json  Format output as json.
-
-DESCRIPTION
-  Displays installation properties of a plugin.
-
-EXAMPLES
-  $ github-archiver plugins inspect myplugin
+# Optional command paths
+GH_PATH=gh
+GIT_PATH=git
 ```
 
-_See code: [@oclif/plugin-plugins](https://github.com/oclif/plugin-plugins/blob/5.4.62/src/commands/plugins/inspect.ts)_
+#### Schedule Command Only
 
-## `github-archiver plugins install PLUGIN`
+```bash
+# Log level (fatal/error/warn/info/debug/trace/silent)
+LOG_LEVEL=info
 
-Installs a plugin into github-archiver.
+# Enable colored logs (true/false)
+LOG_COLOR=true
 
-```
-USAGE
-  $ github-archiver plugins install PLUGIN... [--json] [-f] [-h] [-s | -v]
+# Timezone (for cron schedule)
+TZ=UTC
 
-ARGUMENTS
-  PLUGIN...  Plugin to install.
+# Heartbeat timestamp file (updated every 60 seconds)
+HEARTBEAT_PATH=/tmp/heartbeat.epoch
 
-FLAGS
-  -f, --force    Force npm to fetch remote resources even if a local copy exists on disk.
-  -h, --help     Show CLI help.
-  -s, --silent   Silences npm output.
-  -v, --verbose  Show verbose npm output.
-
-GLOBAL FLAGS
-  --json  Format output as json.
-
-DESCRIPTION
-  Installs a plugin into github-archiver.
-
-  Uses npm to install plugins.
-
-  Installation of a user-installed plugin will override a core plugin.
-
-  Use the GITHUB_ARCHIVER_NPM_LOG_LEVEL environment variable to set the npm loglevel.
-  Use the GITHUB_ARCHIVER_NPM_REGISTRY environment variable to set the npm registry.
-
-ALIASES
-  $ github-archiver plugins add
-
-EXAMPLES
-  Install a plugin from npm registry.
-
-    $ github-archiver plugins install myplugin
-
-  Install a plugin from a github url.
-
-    $ github-archiver plugins install https://github.com/someuser/someplugin
-
-  Install a plugin from a github slug.
-
-    $ github-archiver plugins install someuser/someplugin
+# Completion status file (updated after each scheduled archive run)
+COMPLETION_STATUS_PATH=/tmp/completion_status
 ```
 
-_See code: [@oclif/plugin-plugins](https://github.com/oclif/plugin-plugins/blob/5.4.62/src/commands/plugins/install.ts)_
+Create a read-only GitHub token here:
 
-## `github-archiver plugins link PATH`
+<https://github.com/settings/personal-access-tokens/new?name=github-archiver&description=Read-only+token+for+self-hosted+github-archiver&expires_in=none&contents=read&metadata=read&starring=read>
 
-Links a plugin into the CLI for development.
+## 🎨 Placeholders
 
-```
-USAGE
-  $ github-archiver plugins link PATH [-h] [--install] [-v]
+Available placeholders for `output`:
 
-ARGUMENTS
-  PATH  [default: .] path to plugin
+- `{owner}` - Repository owner or organization
+- `{repo}` - Repository name
 
-FLAGS
-  -h, --help          Show CLI help.
-  -v, --verbose
-      --[no-]install  Install dependencies after linking the plugin.
+**Examples:**
 
-DESCRIPTION
-  Links a plugin into the CLI for development.
+```bash
+# Default output
+github-archiver archive https://github.com/octocat/Hello-World
 
-  Installation of a linked plugin will override a user-installed or core plugin.
+# Custom output
+github-archiver archive https://github.com/octocat/Hello-World --output "backups/{owner}/{repo}.git"
 
-  e.g. If you have a user-installed or core plugin that has a 'hello' command, installing a linked plugin with a 'hello'
-  command will override the user-installed or core plugin implementation. This is useful for development work.
+# Skip repositories already listed in a checkpoint file
+github-archiver archive https://github.com/octocat/Hello-World --checkpoint "data/.checkpoint"
 
-
-EXAMPLES
-  $ github-archiver plugins link myplugin
+# Re-clone an existing archive
+github-archiver archive https://github.com/octocat/Hello-World --ifExists=overwrite
 ```
 
-_See code: [@oclif/plugin-plugins](https://github.com/oclif/plugin-plugins/blob/5.4.62/src/commands/plugins/link.ts)_
+## 🛠️ Development
 
-## `github-archiver plugins remove [PLUGIN]`
+### Requirements
 
-Removes a plugin from the CLI.
+- Node.js 22+
+- pnpm
+- Git
+- GitHub CLI (`gh`)
 
-```
-USAGE
-  $ github-archiver plugins remove [PLUGIN...] [-h] [-v]
+### Build
 
-ARGUMENTS
-  [PLUGIN...]  plugin to uninstall
-
-FLAGS
-  -h, --help     Show CLI help.
-  -v, --verbose
-
-DESCRIPTION
-  Removes a plugin from the CLI.
-
-ALIASES
-  $ github-archiver plugins unlink
-  $ github-archiver plugins remove
-
-EXAMPLES
-  $ github-archiver plugins remove myplugin
+```bash
+pnpm install
+pnpm build
 ```
 
-## `github-archiver plugins reset`
+### Test
 
-Remove all user-installed and linked plugins.
-
-```
-USAGE
-  $ github-archiver plugins reset [--hard] [--reinstall]
-
-FLAGS
-  --hard       Delete node_modules and package manager related files in addition to uninstalling plugins.
-  --reinstall  Reinstall all plugins after uninstalling.
+```bash
+pnpm test        # watch mode
+pnpm test:run    # single run
+pnpm test:unit
+pnpm test:integration
 ```
 
-_See code: [@oclif/plugin-plugins](https://github.com/oclif/plugin-plugins/blob/5.4.62/src/commands/plugins/reset.ts)_
+### Development Mode
 
-## `github-archiver plugins uninstall [PLUGIN]`
-
-Removes a plugin from the CLI.
-
-```
-USAGE
-  $ github-archiver plugins uninstall [PLUGIN...] [-h] [-v]
-
-ARGUMENTS
-  [PLUGIN...]  plugin to uninstall
-
-FLAGS
-  -h, --help     Show CLI help.
-  -v, --verbose
-
-DESCRIPTION
-  Removes a plugin from the CLI.
-
-ALIASES
-  $ github-archiver plugins unlink
-  $ github-archiver plugins remove
-
-EXAMPLES
-  $ github-archiver plugins uninstall myplugin
+```bash
+pnpm dev <command>
 ```
 
-_See code: [@oclif/plugin-plugins](https://github.com/oclif/plugin-plugins/blob/5.4.62/src/commands/plugins/uninstall.ts)_
+## 📄 License
 
-## `github-archiver plugins unlink [PLUGIN]`
+MIT License - see [LICENSE](LICENSE) for details
 
-Removes a plugin from the CLI.
+## 📖 Documentation
 
-```
-USAGE
-  $ github-archiver plugins unlink [PLUGIN...] [-h] [-v]
-
-ARGUMENTS
-  [PLUGIN...]  plugin to uninstall
-
-FLAGS
-  -h, --help     Show CLI help.
-  -v, --verbose
-
-DESCRIPTION
-  Removes a plugin from the CLI.
-
-ALIASES
-  $ github-archiver plugins unlink
-  $ github-archiver plugins remove
-
-EXAMPLES
-  $ github-archiver plugins unlink myplugin
-```
-
-## `github-archiver plugins update`
-
-Update installed plugins.
-
-```
-USAGE
-  $ github-archiver plugins update [-h] [-v]
-
-FLAGS
-  -h, --help     Show CLI help.
-  -v, --verbose
-
-DESCRIPTION
-  Update installed plugins.
-```
-
-_See code: [@oclif/plugin-plugins](https://github.com/oclif/plugin-plugins/blob/5.4.62/src/commands/plugins/update.ts)_
-<!-- commandsstop -->
+- [COMMANDS.md](COMMANDS.md) - Detailed command reference
+- [src/utils/config.ts](src/utils/config.ts) - Configuration file type definitions
+- [src/utils/env.ts](src/utils/env.ts) - Environment variable type definitions

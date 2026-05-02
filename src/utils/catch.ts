@@ -27,11 +27,8 @@ const catchErrorOne = (error: Error, children: string[]) => {
 	});
 	const childrenMessage = children.length ? `\n\n${children.join("\n\n")}` : "";
 	const cause = error.cause ? `\nCaused by: ${String(error.cause)}` : "";
-	return boxen(
-		`${chalk.red(`${chalk.bold(className)}\n\n${error.message}${cause}`)}\n\n${trace}${childrenMessage}`,
-		{
-			padding: 1,
-			borderColor: "red",
-		},
-	);
+	return boxen(`${chalk.red(`${chalk.bold(className)}\n\n${error.message}${cause}`)}\n\n${trace}${childrenMessage}`, {
+		padding: 1,
+		borderColor: "red",
+	});
 };

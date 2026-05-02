@@ -1,32 +1,44 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 
+export type GitHubRepository = {
+	owner: string;
+	repo: string;
+	url: string;
+};
+
 export const parseGitHubRepositoryUrl = (url: string) => {
 	const github = new URLPattern({
-		protocol: "(https?|git|ssh)",
+		protocol: "https",
 		hostname: "github.com",
 		pathname: "/:owner/:repo{.git}?",
 	});
 	const match = github.exec(url);
 	if (match) {
 		const { owner, repo } = match.pathname.groups;
-		return { owner, repo, url } as { owner: string; repo: string; url: string };
+		return { owner, repo, url } as GitHubRepository;
 	}
 	throw new Error("Invalid GitHub repository URL");
 };
 
 type RunOptions = {
-	env: Record<string, string>;
+	env?: NodeJS.ProcessEnv;
 	input?: string;
 	stdout?: (chunk: string) => void;
 	stderr?: (chunk: string) => void;
 };
 
-const run = async (commands: string[], options: RunOptions) => {
+export type RunResult = {
+	stdout: string;
+	stderr: string;
+	symbolicRef: (name: string) => string | undefined;
+};
+
+const run = async (commands: string[], options: RunOptions): Promise<RunResult> => {
 	const [stdout, stderr] = await new Promise<[string, string]>((resolve, reject) => {
 		const child = spawn(commands[0], commands.slice(1), {
 			stdio: ["pipe", "pipe", "pipe"],
-			env: options.env,
+			env: options.env ?? process.env,
 		});
 		const output = ["", ""] as [string, string];
 
@@ -52,7 +64,7 @@ const run = async (commands: string[], options: RunOptions) => {
 				return;
 			}
 
-			reject(new Error(`failed: ${signal ?? code}`));
+			reject(new Error(`${commands.join(" ")} failed: ${signal ?? code}\n${output[1]}`.trim()));
 		});
 	});
 
@@ -86,30 +98,18 @@ export const createGitSpawn = async (git: string, options: RunOptions) => {
 				has: async () => {
 					return fs.existsSync(path);
 				},
+				remove: async () => {
+					await fs.promises.rm(path, { recursive: true, force: true });
+				},
 				clone: async (url: string) => {
 					return run([git, "clone", "--mirror", url, path], options);
 				},
 				fetch: async () => {
 					await run(
-						[
-							git,
-							"-c",
-							"gc.auto=0",
-							"-C",
-							path,
-							"fetch",
-							"origin",
-							"--atomic",
-							"--prune",
-							"--show-forced-updates",
-							"+refs/*:refs/*",
-						],
+						[git, "-c", "gc.auto=0", "-C", path, "fetch", "origin", "--atomic", "--prune", "--show-forced-updates", "+refs/*:refs/*"],
 						options,
 					);
-					const output = await run(
-						[git, "-C", path, "ls-remote", "--symref", "origin", "HEAD"],
-						options,
-					);
+					const output = await run([git, "-C", path, "ls-remote", "--symref", "origin", "HEAD"], options);
 					const head = output.symbolicRef("HEAD");
 					if (head) {
 						await run([git, "-C", path, "symbolic-ref", "HEAD", head], options);

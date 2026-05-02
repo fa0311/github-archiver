@@ -1,13 +1,19 @@
 import fs from "node:fs";
+import path from "node:path";
 import { Args, Command, Flags } from "@oclif/core";
+import { Semaphore } from "async-mutex";
+import { CronJob } from "cron";
+import "dotenv/config";
 import pino from "pino";
+import { type ArchiveTarget, createSafeCommand, repositoryKey } from "../archive.ts";
+import { loadCheckpoint } from "../utils/checkpoint.ts";
 import { parseConfig } from "../utils/config.ts";
 import { parseEnv } from "../utils/env.ts";
-import "dotenv/config";
-import path from "node:path";
-import { CronJob } from "cron";
-import { set } from "zod";
+import { GitHubArchiverAlreadyExistsError } from "../utils/error.ts";
+import { outputFile } from "../utils/file.ts";
 import { createGhSpawn, createGitSpawn, parseGitHubRepositoryUrl } from "../utils/git.ts";
+import { formatDuration } from "../utils/log.ts";
+import { exhaustiveMatchAsync } from "../utils/match.ts";
 import { placeholder } from "../utils/placeholder.ts";
 
 const outputTimestamp = (filename: string, errorHandler: (error: unknown) => void) => {
@@ -75,57 +81,96 @@ export default class Schedule extends Command {
 		}
 
 		const onTick = async () => {
-			const start = performance.now();
-			logger.info("Getting repository list from queries");
+			const duration = await formatDuration(async () => {
+				logger.info("Getting repository list from queries");
 
-			const repositories: ReturnType<typeof parseGitHubRepositoryUrl>[] = [];
-			for (const query of config.queries) {
-				switch (query.type) {
-					case "url":
-						repositories.push(parseGitHubRepositoryUrl(query.url));
-						break;
-					case "api": {
-						const apiRepositories = await gh.api(query.path, query.jq);
-						repositories.push(...apiRepositories.map(parseGitHubRepositoryUrl));
-						break;
-					}
-				}
-			}
+				const safeCommand = createSafeCommand();
+				const checkpointKeys = await loadCheckpoint(config.checkpoint);
+				const semaphore = new Semaphore(5);
 
-			logger.info(`Found ${repositories.length} repositories to archive`);
-			logger.debug(`Downloading repositories: ${JSON.stringify(repositories.map(({ owner, repo }) => `${owner}/${repo}`))}`);
+				const repositories = await (async () => {
+					const result: Record<string, ArchiveTarget> = {};
+					for (const query of config.queries) {
+						switch (query.type) {
+							case "url":
+								result[repositoryKey(parseGitHubRepositoryUrl(query.url))] = parseGitHubRepositoryUrl(query.url);
+								break;
+							case "api": {
+								const apiRepositories = await safeCommand(() => gh.api(query.path, query.jq));
+								for (const repo of apiRepositories) {
+									result[repositoryKey(parseGitHubRepositoryUrl(repo))] = parseGitHubRepositoryUrl(repo);
+								}
+								break;
+							}
+						}
+					}
 
-			for (const { owner, repo, url } of repositories) {
-				try {
-					const repository = git.repository(placeholder(config.output, { owner, repo }));
-					if (await repository.has()) {
-						logger.info(`Fetching latest changes for ${owner}/${repo}...`);
-						await repository.fetch();
-					} else {
-						logger.info(`Cloning repository ${owner}/${repo}...`);
-						await repository.clone(url);
-					}
-					if (env.COMPLETION_STATUS_PATH) {
-						outputResult(env.COMPLETION_STATUS_PATH, true, logger.error);
-					}
-				} catch (_) {
-					if (env.COMPLETION_STATUS_PATH) {
-						outputResult(env.COMPLETION_STATUS_PATH, false, logger.error);
-					}
-				}
-			}
+					return Object.values(result).filter((repo) => !checkpointKeys.includes(repositoryKey(repo)));
+				})();
 
-			const end = performance.now();
-			const duration = end - start;
-			const seconds = Math.floor((duration / 1000) % 60);
-			const minutes = Math.floor((duration / (1000 * 60)) % 60);
-			return logger.info(`Scheduled download task completed in ${minutes}m ${seconds}s`);
+				logger.info(`Found ${repositories.length} repositories to archive`);
+				logger.debug(`Archiving repositories: ${JSON.stringify(repositories.map(({ owner, repo }) => `${owner}/${repo}`))}`);
+
+				await outputFile(async (file) => {
+					const checkpoint = config.checkpoint ? await file.create(config.checkpoint, "a") : null;
+					const promises = repositories.map(async (target) => {
+						await semaphore.runExclusive(async () => {
+							try {
+								const key = repositoryKey(target);
+								logger.info(`Archiving repository: ${key}`);
+								const archivePath = placeholder(config.output, { owner: target.owner, repo: target.repo });
+								const repository = git.repository(archivePath);
+								const exists = await repository.has();
+
+								if (exists) {
+									const runner = exhaustiveMatchAsync({
+										error: async () => {
+											throw new GitHubArchiverAlreadyExistsError(`File or directory already exists: ${archivePath}`);
+										},
+										skip: async () => {
+											logger.warn(`Skipping existing file or directory: ${archivePath}`);
+										},
+										fetch: async () => {
+											const duration = await formatDuration(() => safeCommand(() => repository.fetch()));
+											logger.info(`Fetched ${key} in ${duration}`);
+										},
+										overwrite: async () => {
+											logger.warn(`Overwriting existing file or directory: ${archivePath}`);
+											await repository.remove();
+											const duration = await formatDuration(() => safeCommand(() => repository.clone(target.url)));
+											logger.info(`Cloned ${key} in ${duration}`);
+										},
+									});
+									await runner(config.ifExists);
+								} else {
+									const duration = await formatDuration(() => safeCommand(() => repository.clone(target.url)));
+									logger.info(`Cloned ${key} in ${duration}`);
+								}
+
+								await checkpoint?.line(key);
+
+								if (env.COMPLETION_STATUS_PATH) {
+									outputResult(env.COMPLETION_STATUS_PATH, true, logger.error);
+								}
+								logger.debug(`Finished archiving repository: ${key}`);
+							} catch (error) {
+								if (env.COMPLETION_STATUS_PATH) {
+									outputResult(env.COMPLETION_STATUS_PATH, false, logger.error);
+								}
+								logger.error(error);
+							}
+						});
+					});
+					await Promise.all(promises);
+				});
+			});
+			return logger.info(`Scheduled archive task completed in ${duration}`);
 		};
 
 		if (env.HEARTBEAT_PATH) {
 			const pathname = env.HEARTBEAT_PATH;
 			outputTimestamp(pathname, logger.error);
-			setInterval(() => outputTimestamp(pathname, logger.error), 60000);
+			setInterval(() => void outputTimestamp(pathname, logger.error), 60000);
 		}
 
 		if (flags.runOnce) {
