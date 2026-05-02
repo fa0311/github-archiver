@@ -10,6 +10,7 @@ A powerful CLI tool for archiving GitHub repositories as local mirror clones. Fe
 - **Scheduler**: Automate periodic archive tasks with cron expressions
 - **GitHub CLI Integration**: Archive repository lists returned by `gh api`
 - **Mirror Sync**: Preserve branches, tags, deleted refs, force-pushed refs, and default branch changes
+- **Git LFS Support**: Mirror archives also fetch Git LFS objects
 - **Incremental Scheduler**: Scheduled runs clone missing repositories and `fetch` existing mirrors
 - **Docker Support**: Easy deployment with docker-compose
 - **Flexible Output**: Use `{owner}` and `{repo}` placeholders
@@ -171,6 +172,7 @@ github-archiver archive $(gh api --paginate '/orgs/ORG/repos?per_page=100' --jq 
 ```
 
 The scheduler uses the same `gh api --paginate <path> --jq <jq>` flow through `queries[].type = "api"`. During scheduled runs, existing archive directories are updated with `git fetch`, and missing ones are cloned.
+Git LFS repositories are synced with `git lfs fetch --all origin` after each clone and fetch, so the archive includes LFS objects as well.
 
 ## 🎨 Placeholders
 
@@ -201,6 +203,7 @@ github-archiver archive $(gh api --paginate '/user/repos?per_page=100' --jq '.[]
 - Node.js (v24+ recommended, v22+ supported)
 - pnpm
 - Git
+- Git LFS
 - GitHub CLI (`gh`)
 
 ### Build

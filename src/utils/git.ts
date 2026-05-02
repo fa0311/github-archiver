@@ -102,13 +102,16 @@ export const createGitSpawn = async (git: string, options: RunOptions) => {
 					await fs.promises.rm(path, { recursive: true, force: true });
 				},
 				clone: async (url: string) => {
-					return run([git, "clone", "--mirror", url, path], options);
+					const result = await run([git, "clone", "--mirror", url, path], options);
+					await run([git, "-C", path, "lfs", "fetch", "--all", "origin"], options);
+					return result;
 				},
 				fetch: async () => {
 					await run(
 						[git, "-c", "gc.auto=0", "-C", path, "fetch", "origin", "--atomic", "--prune", "--show-forced-updates", "+refs/*:refs/*"],
 						options,
 					);
+					await run([git, "-C", path, "lfs", "fetch", "--all", "origin"], options);
 					const output = await run([git, "-C", path, "ls-remote", "--symref", "origin", "HEAD"], options);
 					const head = output.symbolicRef("HEAD");
 					if (head) {

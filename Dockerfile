@@ -11,7 +11,7 @@ FROM node:24 AS runtime
 WORKDIR /app
 
 RUN apt-get update
-RUN apt-get install -y gh git
+RUN apt-get install -y gh git git-lfs
 RUN rm -rf /var/lib/apt/lists/*
 
 COPY package.json pnpm-lock.yaml ./
