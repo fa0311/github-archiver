@@ -125,6 +125,21 @@ After generating the token, set it in your shell or `.env` file:
 export GH_TOKEN=github_pat_xxx
 ```
 
+If you want to use a classic personal access token instead, open:
+
+<https://github.com/settings/tokens/new?scopes=repo,read:org&description=Token+for+self-hosted+github-archiver>
+
+Suggested scopes for classic tokens:
+
+- `repo` when archiving private repositories
+- `read:org` when archiving repositories from organizations with membership-based access
+
+Then set it the same way:
+
+```bash
+export GH_TOKEN=ghp_xxx
+```
+
 If you already authenticated with GitHub CLI, you can reuse that token:
 
 ```bash
