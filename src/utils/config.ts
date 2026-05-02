@@ -22,8 +22,6 @@ const configSchema = z.strictObject({
 	runOnInit: z.boolean().default(false),
 	queries: z.array(querySchema).min(1),
 	output: z.string().default("archives/{owner}/{repo}"),
-	ifExists: ifExistsSchema.default("fetch"),
-	checkpoint: z.string().optional(),
 });
 
 export type Query = z.infer<typeof querySchema>;

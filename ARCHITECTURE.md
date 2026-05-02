@@ -9,9 +9,9 @@ This document describes the high-level architecture and design principles of thi
 The codebase is organized into distinct layers with clear responsibilities:
 
 - **Command Layer**: CLI interface, scheduler loop, and user interaction
-- **Archive Flow Layer**: Repository query expansion, checkpoint filtering, and archive execution
+- **Archive Flow Layer**: Repository query expansion, deduplication, and archive execution
 - **Command Adapter Layer**: Git and GitHub CLI process execution
-- **Utility Layer**: Reusable helpers for retry, logging, progress, config, and file output
+- **Utility Layer**: Reusable helpers for retry, logging, placeholder expansion, and config parsing
 
 ### 2. Type Safety
 
@@ -23,7 +23,7 @@ The codebase is organized into distinct layers with clear responsibilities:
 
 - Exponential backoff for transient Git/GitHub CLI failures
 - Internal concurrency limiting for repository work
-- Optional checkpoint files for resumable batch execution
+- Health signal files for external monitoring
 
 ## System Architecture
 
@@ -32,7 +32,7 @@ graph TD
     CLI[CLI Commands<br/>User-facing interface with argument parsing]
     Scheduler[Scheduler<br/>Cron-based repeated execution]
     GitHub[GitHub Query Expansion<br/>URL and gh api queries]
-    Archive[Archive Flow<br/>Checkpoint, ifExists, progress/logging]
+    Archive[Archive Flow<br/>Deduplication, clone/fetch, progress/logging]
     Git[Git Mirror Operations<br/>clone --mirror and fetch]
     Health[Health Signals<br/>Heartbeat and completion status]
 
@@ -49,16 +49,9 @@ graph TD
 
 1. **Input Parsing**: CLI URLs or scheduled query definitions
 2. **Query Expansion**: Direct URLs and GitHub API query results become repository targets
-3. **Checkpoint Filtering**: Completed `owner/repo` entries are skipped when configured
+3. **Deduplication**: Repositories gathered from URLs and `gh api` responses are keyed by `owner/repo`
 4. **Archive Coordination**: Repositories are processed with an internal concurrency limit
-5. **Mirror Operation**: Clone missing archives or apply `ifExists` behavior to existing paths
-
-### Existing Archive Handling
-
-- `fetch`: Update an existing mirror clone
-- `skip`: Keep the existing archive untouched
-- `overwrite`: Remove and clone the archive again
-- `error`: Fail the repository when the output path already exists
+5. **Mirror Operation**: Clone missing archives and `fetch` existing mirror directories
 
 ## Data Flow
 
@@ -67,8 +60,7 @@ graph TD
 ```mermaid
 graph LR
     Input[Repository URLs] --> Parse[Parse GitHub URLs]
-    Parse --> Checkpoint[Checkpoint Filter]
-    Checkpoint --> Archive[Clone/Fetch]
+    Parse --> Archive[Clone/Fetch]
     Archive --> Output[Mirror Archives]
 ```
 
@@ -78,8 +70,7 @@ graph LR
 graph TB
     Config[Config File] --> Cron[Cron Trigger]
     Cron --> Expand[Query Expansion]
-    Expand --> Checkpoint[Checkpoint Filter]
-    Checkpoint --> Archive[Clone/Fetch]
+    Expand --> Archive[Clone/Fetch]
     Archive --> Health[Health Signals]
 ```
 
@@ -95,7 +86,7 @@ graph TB
 
 - Pure utilities and small behavior helpers
 - Retry/backoff behavior
-- Checkpoint and file output helpers
+- Config parsing and scheduler helpers
 - URL parsing and placeholder replacement
 
 ### Integration Tests

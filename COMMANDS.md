@@ -88,7 +88,7 @@ USAGE
   $ github-archiver schedule [CONFIG] [--runOnce] [--setup] [--help] [--version]
 
 ARGUMENTS
-  [CONFIG]  [default: schedule.json] Path to the schedule configuration file
+  [CONFIG]  [default: schedule.json] Path to the schedule configuration file (JSONC supported)
 
 FLAGS
   --help     Show CLI help.
@@ -106,7 +106,7 @@ EXAMPLES
 
   Run scheduled archiving with custom config
 
-    $ github-archiver schedule schedule.json
+    $ github-archiver schedule schedule.jsonc
 
   Run once without scheduling (useful for testing)
 

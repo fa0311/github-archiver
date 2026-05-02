@@ -2,15 +2,15 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A powerful CLI tool for archiving GitHub repositories as local mirror clones. Features scheduled execution, GitHub CLI integration, checkpoint functionality, and more for an efficient and robust archive experience.
+A powerful CLI tool for archiving GitHub repositories as local mirror clones. Features scheduled execution, GitHub CLI integration, mirror sync, and health signal output for an efficient and robust archive experience.
 
 ## ✨ Features
 
 - **Command Line Tool**: Archive repositories instantly by HTTPS clone URL
 - **Scheduler**: Automate periodic archive tasks with cron expressions
 - **GitHub CLI Integration**: Archive repository lists returned by `gh api`
-- **Checkpoint System**: Skip repositories already completed in scheduled runs
 - **Mirror Sync**: Preserve branches, tags, deleted refs, force-pushed refs, and default branch changes
+- **Incremental Scheduler**: Scheduled runs clone missing repositories and `fetch` existing mirrors
 - **Docker Support**: Easy deployment with docker-compose
 - **Flexible Output**: Use `{owner}` and `{repo}` placeholders
 
@@ -27,7 +27,7 @@ github-archiver archive https://github.com/fa0311/github-archiver
 github-archiver archive $(gh api --paginate '/user/repos?per_page=100' --jq '.[].clone_url')
 
 # Run scheduled archiving
-github-archiver schedule schedule.json
+github-archiver schedule schedule.jsonc
 ```
 
 For detailed command options, see [COMMANDS.md](COMMANDS.md).
@@ -64,7 +64,9 @@ docker-compose up -d
 
 ## ⚙️ Configuration
 
-### Schedule Configuration File (schedule.json)
+### Schedule Configuration File
+
+The scheduler config is parsed as JSONC, so comments are allowed. The CLI default path is `schedule.json`, but you can also keep the file as `schedule.jsonc` and pass it explicitly.
 
 ```jsonc
 {
@@ -84,9 +86,7 @@ docker-compose up -d
       "jq": ".[].clone_url",
     },
   ],
-  "output": "archives/{owner}/{repo}", // Output path (placeholders available)
-  "ifExists": "fetch", // Existing archive behavior: fetch/skip/overwrite/error
-  "checkpoint": "data/.checkpoint", // Checkpoint file path
+  "output": "archives/{owner}/{repo}" // Output path (placeholders available)
 }
 ```
 
@@ -170,7 +170,7 @@ github-archiver archive $(gh api --paginate '/user/starred?per_page=100' --jq '.
 github-archiver archive $(gh api --paginate '/orgs/ORG/repos?per_page=100' --jq '.[].clone_url')
 ```
 
-The scheduler uses the same `gh api --paginate <path> --jq <jq>` flow through `queries[].type = "api"`.
+The scheduler uses the same `gh api --paginate <path> --jq <jq>` flow through `queries[].type = "api"`. During scheduled runs, existing archive directories are updated with `git fetch`, and missing ones are cloned.
 
 ## 🎨 Placeholders
 
