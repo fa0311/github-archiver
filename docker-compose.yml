@@ -6,7 +6,7 @@ services:
       GH_TOKEN: ${GH_TOKEN}
       TZ: ${TZ:-UTC}
     volumes:
-      - ./schedule.jsonc:/app/schedule.json:ro
+      - ./schedule.json:/app/schedule.json:ro
       - ./archives:/app/archives
       - github-archiver-data:/app/data
 
