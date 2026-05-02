@@ -15,30 +15,26 @@ USAGE
 <!-- usagestop -->
 
 <!-- commands -->
-* [`github-archiver archive INPUT`](#github-archiver-archive-input)
+* [`github-archiver archive INPUT...`](#github-archiver-archive-input)
 * [`github-archiver help [COMMAND]`](#github-archiver-help-command)
 * [`github-archiver schedule [CONFIG]`](#github-archiver-schedule-config)
 
-## `github-archiver archive INPUT`
+## `github-archiver archive INPUT...`
 
 Archive GitHub repositories as local mirror clones
 
 ```
 USAGE
-  $ github-archiver archive INPUT [-o <value>] [--ifExists fetch|skip|overwrite|error] [--checkpoint <value>]
-    [-q] [--help] [--version]
+  $ github-archiver archive INPUT... [-o <value>] [-q] [--help] [--version]
 
 ARGUMENTS
-  INPUT  HTTPS GitHub repository URL to archive
+  INPUT...  HTTPS GitHub repository URL to archive
 
 FLAGS
-  -o, --output=<value>      [default: archives/{owner}/{repo}] Output directory pattern
-  -q, --quiet               Suppress progress output
-      --checkpoint=<value>  Path to a checkpoint file containing owner/repo entries
-      --help                Show CLI help.
-      --ifExists=<option>   [default: fetch] Behavior when the output archive already exists
-                            <options: fetch|skip|overwrite|error>
-      --version             Show CLI version.
+  -o, --output=<value>  [default: archives/{owner}/{repo}] Output directory pattern
+  -q, --quiet           Suppress progress output
+      --help            Show CLI help.
+      --version         Show CLI version.
 
 DESCRIPTION
   Archive GitHub repositories as local mirror clones
@@ -52,13 +48,13 @@ EXAMPLES
 
     $ github-archiver archive https://github.com/octocat/Hello-World https://github.com/github/docs
 
-  Overwrite an existing archive instead of fetching it
+  Archive repositories returned by GitHub CLI
 
-    $ github-archiver archive https://github.com/octocat/Hello-World --ifExists=overwrite
+    $ github-archiver archive $(gh api --paginate '/user/repos?per_page=100' --jq '.[].clone_url')
 
-  Skip repositories already listed in a checkpoint file
+  Archive with a custom output directory
 
-    $ github-archiver archive https://github.com/octocat/Hello-World --checkpoint=data/.checkpoint
+    $ github-archiver archive https://github.com/octocat/Hello-World --output=backups/{owner}/{repo}.git
 ```
 
 _See code: [src/commands/archive.ts](https://github.com/fa0311/github-archiver/blob/main/src/commands/archive.ts)_

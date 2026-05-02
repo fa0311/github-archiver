@@ -1,4 +1,4 @@
-import { exponentialBackoffFactory, maxDelayChain, runBackoff } from "./utils/backoff.ts";
+import { exponentialBackoffFactory, runBackoff } from "./utils/backoff.ts";
 import type { GitHubRepository } from "./utils/git.ts";
 import { result } from "./utils/result.ts";
 
@@ -9,10 +9,10 @@ type SafeCommand = <T>(callback: () => Promise<T>) => Promise<T>;
 export const repositoryKey = ({ owner, repo }: ArchiveTarget) => `${owner}/${repo}`;
 
 export const createSafeCommand = (signal?: AbortSignal): SafeCommand => {
-	const maxRetries = 10;
+	const maxRetries = 3;
 	const backoff = runBackoff({
 		delayFactory: exponentialBackoffFactory({ baseDelayMs: 500 }),
-		chain: [maxDelayChain(60000)],
+		chain: [],
 		maxRetries,
 		signal,
 	});

@@ -1,6 +1,6 @@
 import { Args, Command, Flags } from "@oclif/core";
 import { Semaphore } from "async-mutex";
-import { createSafeCommand, repositoryKey } from "../archive.ts";
+import { type ArchiveTarget, createSafeCommand, repositoryKey } from "../archive.ts";
 import { catchError } from "../utils/catch.ts";
 import { parseEnv } from "../utils/env.ts";
 import { createGitSpawn, parseGitHubRepositoryUrl } from "../utils/git.ts";
@@ -21,12 +21,12 @@ export default class Archive extends Command {
 			command: "<%= config.bin %> archive https://github.com/octocat/Hello-World https://github.com/github/docs",
 		},
 		{
-			description: "Overwrite an existing archive instead of fetching it",
-			command: "<%= config.bin %> archive https://github.com/octocat/Hello-World --ifExists=overwrite",
+			description: "Archive repositories returned by GitHub CLI",
+			command: "<%= config.bin %> archive $(gh api --paginate '/user/repos?per_page=100' --jq '.[].clone_url')",
 		},
 		{
-			description: "Skip repositories already listed in a checkpoint file",
-			command: "<%= config.bin %> archive https://github.com/octocat/Hello-World --checkpoint=data/.checkpoint",
+			description: "Archive with a custom output directory",
+			command: "<%= config.bin %> archive https://github.com/octocat/Hello-World --output=backups/{owner}/{repo}.git",
 		},
 	];
 
@@ -57,7 +57,13 @@ export default class Archive extends Command {
 		this.log(title("GitHub Archiver"));
 		const { args, flags } = await this.parse(Archive);
 
-		const targets = args.input.map(parseGitHubRepositoryUrl);
+		const repositories = await (async () => {
+			const result: Record<string, ArchiveTarget> = {};
+			for (const input of args.input) {
+				result[repositoryKey(parseGitHubRepositoryUrl(input))] = parseGitHubRepositoryUrl(input);
+			}
+			return Object.values(result);
+		})();
 
 		const env = await parseEnv();
 		const git = await createGitSpawn(env.GIT_PATH, { env });
@@ -65,8 +71,8 @@ export default class Archive extends Command {
 		const semaphore = new Semaphore(5);
 
 		await progress({ hidden: flags.quiet }, async (multiBar) => {
-			await multiBar.create({ total: targets.length, filename: "Repositories", hidden: targets.length <= 1 }, async (bar) => {
-				const promises = targets.map(async (target) => {
+			await multiBar.create({ total: repositories.length, filename: "Repositories", hidden: repositories.length <= 1 }, async (bar) => {
+				const promises = repositories.map(async (target) => {
 					await semaphore.runExclusive(async () => {
 						const key = repositoryKey(target);
 

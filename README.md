@@ -2,24 +2,29 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A powerful CLI tool for archiving GitHub repositories as local mirror clones. Features scheduled execution, GitHub API queries, checkpoint support, and flexible existing-archive handling.
+A powerful CLI tool for archiving GitHub repositories as local mirror clones. Features scheduled execution, GitHub CLI integration, checkpoint functionality, and more for an efficient and robust archive experience.
 
 ## ✨ Features
 
-- **Command Line Archiving**: Archive one or more GitHub repositories by URL
+- **Command Line Tool**: Archive repositories instantly by HTTPS clone URL
 - **Scheduler**: Automate periodic archive tasks with cron expressions
-- **GitHub API Queries**: Archive starred repositories, user repositories, organization repositories, and more
-- **Checkpoint System**: Skip repositories already completed in long archive runs
+- **GitHub CLI Integration**: Archive repository lists returned by `gh api`
+- **Checkpoint System**: Skip repositories already completed in scheduled runs
 - **Mirror Sync**: Preserve branches, tags, deleted refs, force-pushed refs, and default branch changes
-- **Existing Archive Control**: Fetch, skip, overwrite, or error when output already exists
+- **Docker Support**: Easy deployment with docker-compose
 - **Flexible Output**: Use `{owner}` and `{repo}` placeholders
-- **Docker Support**: Run as a one-off CLI or long-running scheduler
 
 ## 📚 Quick Start
 
 ```bash
+# Set a GitHub token
+export GH_TOKEN=github_pat_xxx
+
 # Archive a repository
 github-archiver archive https://github.com/fa0311/github-archiver
+
+# Archive repositories returned by GitHub CLI
+github-archiver archive $(gh api --paginate '/user/repos?per_page=100' --jq '.[].clone_url')
 
 # Run scheduled archiving
 github-archiver schedule schedule.json
@@ -49,7 +54,7 @@ docker run --rm -e GH_TOKEN=github_pat_xxx -v ${PWD}/archives:/app/archives ghcr
 
 Use docker-compose for scheduled archiving:
 
-1. Create `schedule.json` (see configuration example below)
+1. Create `schedule.jsonc` (see configuration example below)
 
 2. Start with docker-compose
 
@@ -59,31 +64,29 @@ docker-compose up -d
 
 ## ⚙️ Configuration
 
-### Schedule Configuration File (`schedule.json`)
+### Schedule Configuration File (schedule.json)
 
 ```jsonc
 {
   "cron": "0 0 * * *", // Cron expression (required)
   "runOnInit": false, // Execute immediately on startup
   "queries": [
+    // Archive targets
+    { "type": "url", "url": "https://github.com/fa0311/github-archiver" },
     {
-      "type": "url",
-      "url": "https://github.com/fa0311/github-archiver"
+      "type": "api",
+      "path": "/user/repos?per_page=100",
+      "jq": ".[].clone_url",
     },
     {
       "type": "api",
-      "path": "/user/starred",
-      "jq": ".[].clone_url"
+      "path": "/user/starred?per_page=100",
+      "jq": ".[].clone_url",
     },
-    {
-      "type": "api",
-      "path": "/user/repos",
-      "jq": ".[].clone_url"
-    }
   ],
   "output": "archives/{owner}/{repo}", // Output path (placeholders available)
   "ifExists": "fetch", // Existing archive behavior: fetch/skip/overwrite/error
-  "checkpoint": "data/.checkpoint" // Optional checkpoint file path
+  "checkpoint": "data/.checkpoint", // Checkpoint file path
 }
 ```
 
@@ -96,12 +99,41 @@ Can be set via `.env` file or system environment variables.
 #### GitHub Settings (All commands)
 
 ```bash
-# Required for GitHub CLI API queries and private repositories
+# Required by the CLI and used by gh api/scheduled queries
 GH_TOKEN=github_pat_xxx
 
 # Optional command paths
 GH_PATH=gh
 GIT_PATH=git
+```
+
+### GitHub Token
+
+Create a read-only fine-grained personal access token here:
+
+<https://github.com/settings/personal-access-tokens/new?name=github-archiver&description=Read-only+token+for+self-hosted+github-archiver&expires_in=none&contents=read&metadata=read&starring=read>
+
+Recommended permissions:
+
+- Repository permissions: `Contents: Read`, `Metadata: Read`
+- Account permissions: `Starring: Read` when using `/user/starred`
+
+After generating the token, set it in your shell or `.env` file:
+
+```bash
+export GH_TOKEN=github_pat_xxx
+```
+
+If you already authenticated with GitHub CLI, you can reuse that token:
+
+```bash
+export GH_TOKEN="$(gh auth token)"
+```
+
+For private repositories over HTTPS, run GitHub CLI's Git setup once so `git clone --mirror` and `git fetch` can use the same credentials:
+
+```bash
+gh auth setup-git
 ```
 
 #### Schedule Command Only
@@ -123,13 +155,28 @@ HEARTBEAT_PATH=/tmp/heartbeat.epoch
 COMPLETION_STATUS_PATH=/tmp/completion_status
 ```
 
-Create a read-only GitHub token here:
+### GitHub CLI Integration
 
-<https://github.com/settings/personal-access-tokens/new?name=github-archiver&description=Read-only+token+for+self-hosted+github-archiver&expires_in=none&contents=read&metadata=read&starring=read>
+`archive` accepts multiple repository URLs, so it can consume clone URLs returned by `gh api`:
+
+```bash
+# Archive all repositories visible to the authenticated account
+github-archiver archive $(gh api --paginate '/user/repos?per_page=100' --jq '.[].clone_url')
+
+# Archive starred repositories
+github-archiver archive $(gh api --paginate '/user/starred?per_page=100' --jq '.[].clone_url')
+
+# Archive repositories in an organization
+github-archiver archive $(gh api --paginate '/orgs/ORG/repos?per_page=100' --jq '.[].clone_url')
+```
+
+The scheduler uses the same `gh api --paginate <path> --jq <jq>` flow through `queries[].type = "api"`.
 
 ## 🎨 Placeholders
 
-Available placeholders for `output`:
+Available placeholders for output paths:
+
+### Output Path
 
 - `{owner}` - Repository owner or organization
 - `{repo}` - Repository name
@@ -143,18 +190,15 @@ github-archiver archive https://github.com/octocat/Hello-World
 # Custom output
 github-archiver archive https://github.com/octocat/Hello-World --output "backups/{owner}/{repo}.git"
 
-# Skip repositories already listed in a checkpoint file
-github-archiver archive https://github.com/octocat/Hello-World --checkpoint "data/.checkpoint"
-
-# Re-clone an existing archive
-github-archiver archive https://github.com/octocat/Hello-World --ifExists=overwrite
+# Archive multiple repositories from GitHub CLI
+github-archiver archive $(gh api --paginate '/user/repos?per_page=100' --jq '.[].clone_url')
 ```
 
 ## 🛠️ Development
 
 ### Requirements
 
-- Node.js 22+
+- Node.js (v24+ recommended, v22+ supported)
 - pnpm
 - Git
 - GitHub CLI (`gh`)
