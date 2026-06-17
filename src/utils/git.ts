@@ -3,8 +3,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { statIfExists } from "./fs.ts";
 
-export const STALE_HEAD_LOCK_MS = 10 * 60 * 1000;
-
 export type GitHubRepository = {
 	owner: string;
 	repo: string;
@@ -105,10 +103,6 @@ export const createGitSpawn = async (git: string, options: RunOptions) => {
 					return;
 				}
 
-				if (Date.now() - stat.mtimeMs < STALE_HEAD_LOCK_MS) {
-					return;
-				}
-
 				await fs.promises.rm(lockPath, { force: true });
 			};
 
@@ -142,6 +136,7 @@ export const createGitSpawn = async (git: string, options: RunOptions) => {
 						],
 						options,
 					);
+					await removeStaleHeadLock();
 					await run([git, "-C", repositoryPath, "lfs", "fetch", "--all", "origin"], options);
 					const output = await run([git, "-C", repositoryPath, "ls-remote", "--symref", "origin", "HEAD"], options);
 					const head = output.symbolicRef("HEAD");
