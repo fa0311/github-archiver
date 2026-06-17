@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
-import { createGitSpawn } from "../../../src/utils/git.js";
+import { createGitSpawn, STALE_HEAD_LOCK_MS } from "../../../src/utils/git.js";
 import { createIntegration } from "../../utils/integration.js";
 
 const createGit = async (cwd: string, archivePath: string) => {
@@ -63,6 +63,7 @@ describe("createGitSpawn", () => {
 		const archive = await createGitSpawn("git", { env: git.env });
 		const base = await git.commit("README.md", "# fixture\n");
 		const repository = archive.repository(archivePath);
+		const headLockPath = path.join(archivePath, "HEAD.lock");
 
 		const clone = async () => {
 			expect(await repository.has()).toBe(false);
@@ -70,7 +71,7 @@ describe("createGitSpawn", () => {
 			expect(await repository.has()).toBe(true);
 		};
 
-		return { archive, repository, base, git, clone };
+		return { archive, repository, headLockPath, base, git, clone };
 	};
 
 	it("clones a mirror with local branches and tags", async () => {
@@ -114,6 +115,29 @@ describe("createGitSpawn", () => {
 
 		await expect(git.symbolicRef("HEAD")).resolves.toBe("refs/heads/new-default");
 		await expect(git.ref("HEAD")).resolves.toBe(newDefaultTip);
+	});
+
+	it("removes a stale HEAD lock before fetching", async () => {
+		const { repository, headLockPath, clone } = await createArchive();
+
+		await clone();
+		await fs.promises.writeFile(headLockPath, "");
+		const staleTime = new Date(Date.now() - STALE_HEAD_LOCK_MS - 1000);
+		await fs.promises.utimes(headLockPath, staleTime, staleTime);
+
+		await repository.fetch();
+
+		await expect(fs.promises.access(headLockPath)).rejects.toMatchObject({ code: "ENOENT" });
+	});
+
+	it("keeps a fresh HEAD lock before fetching", async () => {
+		const { repository, headLockPath, clone } = await createArchive();
+
+		await clone();
+		await fs.promises.writeFile(headLockPath, "");
+
+		await expect(repository.fetch()).rejects.toThrow("HEAD.lock");
+		await expect(fs.promises.access(headLockPath)).resolves.toBeUndefined();
 	});
 
 	it("prunes deleted branches", async () => {

@@ -1,5 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
 import { Args, Command, Flags } from "@oclif/core";
 import { Semaphore } from "async-mutex";
 import { CronJob } from "cron";
@@ -9,22 +7,9 @@ import { type ArchiveTarget, createSafeCommand, repositoryKey } from "../archive
 import { parseConfig } from "../utils/config.ts";
 import { parseEnv } from "../utils/env.ts";
 import { createGhSpawn, createGitSpawn, parseGitHubRepositoryUrl } from "../utils/git.ts";
+import { createCompletion, createHeartbeat } from "../utils/healthcheck.ts";
 import { formatDuration } from "../utils/log.ts";
 import { placeholder } from "../utils/placeholder.ts";
-
-const outputTimestamp = (filename: string, errorHandler: (error: unknown) => void) => {
-	(async () => {
-		await fs.promises.mkdir(path.dirname(filename), { recursive: true });
-		await fs.promises.writeFile(filename, `${Math.floor(Date.now() / 1000)}\n`, "utf8");
-	})().catch(errorHandler);
-};
-
-const outputResult = (filename: string, result: boolean, errorHandler: (error: unknown) => void) => {
-	(async () => {
-		await fs.promises.mkdir(path.dirname(filename), { recursive: true });
-		await fs.promises.writeFile(filename, `${result}\n`, "utf8");
-	})().catch(errorHandler);
-};
 
 export default class Schedule extends Command {
 	static description = "Run scheduled archiving based on configuration file";
@@ -106,6 +91,12 @@ export default class Schedule extends Command {
 				logger.info(`Found ${repositories.length} repositories to archive`);
 				logger.debug(`Archiving repositories: ${JSON.stringify(repositories.map(({ owner, repo }) => `${owner}/${repo}`))}`);
 
+				const completion = (() => {
+					if (env.COMPLETION_STATUS_PATH) {
+						return createCompletion(env.COMPLETION_STATUS_PATH, logger.error);
+					}
+				})();
+
 				const promises = repositories.map(async (target) => {
 					await semaphore.runExclusive(async () => {
 						try {
@@ -123,27 +114,21 @@ export default class Schedule extends Command {
 								logger.info(`Cloned ${key} in ${duration}`);
 							}
 
-							if (env.COMPLETION_STATUS_PATH) {
-								outputResult(env.COMPLETION_STATUS_PATH, true, logger.error);
-							}
 							logger.debug(`Finished archiving repository: ${key}`);
 						} catch (error) {
-							if (env.COMPLETION_STATUS_PATH) {
-								outputResult(env.COMPLETION_STATUS_PATH, false, logger.error);
-							}
+							completion?.error();
 							logger.error(error);
 						}
 					});
 				});
 				await Promise.all(promises);
+				completion?.finish();
 			});
 			return logger.info(`Scheduled archive task completed in ${duration}`);
 		};
 
 		if (env.HEARTBEAT_PATH) {
-			const pathname = env.HEARTBEAT_PATH;
-			outputTimestamp(pathname, logger.error);
-			setInterval(() => void outputTimestamp(pathname, logger.error), 60000);
+			createHeartbeat(env.HEARTBEAT_PATH, logger.error);
 		}
 
 		if (flags.runOnce) {

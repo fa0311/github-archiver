@@ -1,5 +1,9 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
+import { statIfExists } from "./fs.ts";
+
+export const STALE_HEAD_LOCK_MS = 10 * 60 * 1000;
 
 export type GitHubRepository = {
 	owner: string;
@@ -93,29 +97,57 @@ export const createGhSpawn = async (gh: string, options: RunOptions) => {
 
 export const createGitSpawn = async (git: string, options: RunOptions) => {
 	return {
-		repository: (path: string) => {
+		repository: (repositoryPath: string) => {
+			const removeStaleHeadLock = async () => {
+				const lockPath = path.join(repositoryPath, "HEAD.lock");
+				const stat = await statIfExists(lockPath);
+				if (!stat) {
+					return;
+				}
+
+				if (Date.now() - stat.mtimeMs < STALE_HEAD_LOCK_MS) {
+					return;
+				}
+
+				await fs.promises.rm(lockPath, { force: true });
+			};
+
 			return {
 				has: async () => {
-					return fs.existsSync(path);
+					return (await statIfExists(repositoryPath)) !== undefined;
 				},
 				remove: async () => {
-					await fs.promises.rm(path, { recursive: true, force: true });
+					await fs.promises.rm(repositoryPath, { recursive: true, force: true });
 				},
 				clone: async (url: string) => {
-					const result = await run([git, "clone", "--mirror", url, path], options);
-					await run([git, "-C", path, "lfs", "fetch", "--all", "origin"], options);
+					const result = await run([git, "clone", "--mirror", url, repositoryPath], options);
+					await run([git, "-C", repositoryPath, "lfs", "fetch", "--all", "origin"], options);
 					return result;
 				},
 				fetch: async () => {
+					await removeStaleHeadLock();
 					await run(
-						[git, "-c", "gc.auto=0", "-C", path, "fetch", "origin", "--atomic", "--prune", "--show-forced-updates", "+refs/*:refs/*"],
+						[
+							git,
+							"-c",
+							"gc.auto=0",
+							"-C",
+							repositoryPath,
+							"fetch",
+							"origin",
+							"--atomic",
+							"--prune",
+							"--show-forced-updates",
+							"+refs/*:refs/*",
+						],
 						options,
 					);
-					await run([git, "-C", path, "lfs", "fetch", "--all", "origin"], options);
-					const output = await run([git, "-C", path, "ls-remote", "--symref", "origin", "HEAD"], options);
+					await run([git, "-C", repositoryPath, "lfs", "fetch", "--all", "origin"], options);
+					const output = await run([git, "-C", repositoryPath, "ls-remote", "--symref", "origin", "HEAD"], options);
 					const head = output.symbolicRef("HEAD");
 					if (head) {
-						await run([git, "-C", path, "symbolic-ref", "HEAD", head], options);
+						await removeStaleHeadLock();
+						await run([git, "-C", repositoryPath, "symbolic-ref", "HEAD", head], options);
 					}
 				},
 			};
