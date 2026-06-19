@@ -55,7 +55,7 @@ describe("createGitSpawn", () => {
 
 	afterEach(integration.afterEachCall);
 
-	const createArchive = async () => {
+	const createArchive = async (description = "Fixture description") => {
 		const temp = await integration.temp();
 		const sourcePath = path.join(temp, "source");
 		const archivePath = path.join(temp, "archive.git");
@@ -64,9 +64,11 @@ describe("createGitSpawn", () => {
 		const git = await createGit(sourcePath, archivePath);
 		const archive = await createGitSpawn("git", { env: git.env });
 		const base = await git.commit("README.md", "# fixture\n", { date: "Thu, 02 Jan 2020 03:04:05 +0000" });
-		const repository = archive.repository(archivePath);
+		const repository = archive.repository(archivePath, { description });
 		const headLockPath = path.join(archivePath, "HEAD.lock");
+		const descriptionPath = path.join(archivePath, "description");
 		const webLastModifiedPath = path.join(archivePath, "info", "web", "last-modified");
+		const readDescription = () => fs.promises.readFile(descriptionPath, "utf8");
 		const readWebLastModified = () => fs.promises.readFile(webLastModifiedPath, "utf8");
 
 		const clone = async () => {
@@ -75,7 +77,7 @@ describe("createGitSpawn", () => {
 			expect(await repository.has()).toBe(true);
 		};
 
-		return { archive, repository, headLockPath, readWebLastModified, base, git, clone };
+		return { archive, archivePath, repository, headLockPath, readDescription, readWebLastModified, base, git, clone };
 	};
 
 	it("clones a mirror with local branches and tags", async () => {
@@ -100,6 +102,22 @@ describe("createGitSpawn", () => {
 		await expect(readWebLastModified()).resolves.toBe("Thu, 02 Jan 2020 03:04:05 GMT\n");
 	});
 
+	it("writes repository description after cloning", async () => {
+		const { clone, readDescription } = await createArchive("Fixture description");
+
+		await clone();
+
+		await expect(readDescription()).resolves.toBe("Fixture description");
+	});
+
+	it("writes an empty repository description after cloning", async () => {
+		const { clone, readDescription } = await createArchive("");
+
+		await clone();
+
+		await expect(readDescription()).resolves.toBe("");
+	});
+
 	it("updates web last-modified after fetching", async () => {
 		const { repository, git, clone, readWebLastModified } = await createArchive();
 
@@ -108,6 +126,17 @@ describe("createGitSpawn", () => {
 		await repository.fetch();
 
 		await expect(readWebLastModified()).resolves.toBe("Fri, 03 Jan 2020 04:05:06 GMT\n");
+	});
+
+	it("updates repository description after fetching", async () => {
+		const { archive, archivePath, git, clone, readDescription } = await createArchive("Old description");
+		const repository = archive.repository(archivePath, { description: "Updated description" });
+
+		await clone();
+		await git.commit("updated.txt", "updated\n");
+		await repository.fetch();
+
+		await expect(readDescription()).resolves.toBe("Updated description");
 	});
 
 	it("fetches branches and tags created after the mirror clone", async () => {

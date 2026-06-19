@@ -54,8 +54,8 @@ export default class Schedule extends Command {
 			timestamp: pino.stdTimeFunctions.isoTime,
 		});
 
-		const git = await createGitSpawn(env.GIT_PATH, { env });
-		const gh = await createGhSpawn(env.GH_PATH, { env });
+		const git = createGitSpawn(env.GIT_PATH, { env });
+		const gh = createGhSpawn(env.GH_PATH, { env });
 		if (flags.setup) {
 			await gh.setup();
 			logger.info("Git authentication setup completed");
@@ -68,8 +68,8 @@ export default class Schedule extends Command {
 				const safeCommand = createSafeCommand();
 				const semaphore = new Semaphore(5);
 
-				const repositories = await (async () => {
-					const result: Record<string, ArchiveTarget> = {};
+				const repositories: ArchiveTarget[] = await (async () => {
+					const result: Record<string, ReturnType<typeof parseGitHubRepositoryUrl>> = {};
 					for (const query of config.queries) {
 						switch (query.type) {
 							case "url": {
@@ -88,7 +88,7 @@ export default class Schedule extends Command {
 						}
 					}
 
-					return Object.values(result);
+					return Promise.all(Object.values(result).map((repository) => safeCommand(() => gh.repository(repository))));
 				})();
 
 				logger.info(`Found ${repositories.length} repositories to archive`);
@@ -106,7 +106,7 @@ export default class Schedule extends Command {
 							const key = repositoryKey(target);
 							logger.info(`Archiving repository: ${key}`);
 							const archivePath = placeholder(config.output, { owner: target.owner, repo: target.repo });
-							const repository = git.repository(archivePath);
+							const repository = git.repository(archivePath, { description: target.description });
 							const exists = await repository.has();
 
 							if (exists) {

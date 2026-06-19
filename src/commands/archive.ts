@@ -3,7 +3,7 @@ import { Semaphore } from "async-mutex";
 import { type ArchiveTarget, createSafeCommand, repositoryKey } from "../archive.ts";
 import { catchError } from "../utils/catch.ts";
 import { parseEnv } from "../utils/env.ts";
-import { createGitSpawn, parseGitHubRepositoryUrl } from "../utils/git.ts";
+import { createGhSpawn, createGitSpawn, parseGitHubRepositoryUrl } from "../utils/git.ts";
 import { formatDuration, info, success, title } from "../utils/log.ts";
 import { placeholder } from "../utils/placeholder.ts";
 import { progress } from "../utils/progress.ts";
@@ -57,17 +57,20 @@ export default class Archive extends Command {
 		this.log(title("GitHub Archiver"));
 		const { args, flags } = await this.parse(Archive);
 
-		const repositories = await (async () => {
-			const result: Record<string, ArchiveTarget> = {};
+		const env = await parseEnv();
+		const gh = createGhSpawn(env.GH_PATH, { env });
+		const git = createGitSpawn(env.GIT_PATH, { env });
+		const safeCommand = createSafeCommand();
+
+		const repositories: ArchiveTarget[] = await (async () => {
+			const result: Record<string, ReturnType<typeof parseGitHubRepositoryUrl>> = {};
 			for (const input of args.input) {
-				result[repositoryKey(parseGitHubRepositoryUrl(input))] = parseGitHubRepositoryUrl(input);
+				const parsed = parseGitHubRepositoryUrl(input);
+				result[repositoryKey(parsed)] = parsed;
 			}
-			return Object.values(result);
+			return Promise.all(Object.values(result).map((repository) => safeCommand(() => gh.repository(repository))));
 		})();
 
-		const env = await parseEnv();
-		const git = await createGitSpawn(env.GIT_PATH, { env });
-		const safeCommand = createSafeCommand();
 		const semaphore = new Semaphore(5);
 
 		await progress({ hidden: flags.quiet }, async (multiBar) => {
@@ -77,7 +80,7 @@ export default class Archive extends Command {
 						const key = repositoryKey(target);
 
 						const archivePath = placeholder(flags.output, { owner: target.owner, repo: target.repo });
-						const repository = git.repository(archivePath);
+						const repository = git.repository(archivePath, { description: target.description });
 						const exists = await repository.has();
 
 						if (exists) {

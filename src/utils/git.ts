@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import z from "zod";
 import { statIfExists } from "./fs.ts";
 
 export type GitHubRepository = {
@@ -34,6 +35,19 @@ export type RunResult = {
 	stdout: string;
 	stderr: string;
 	symbolicRef: (name: string) => string | undefined;
+};
+
+type RepositoryOptions = {
+	description: string;
+};
+
+const githubRepositoryResponseSchema = z.object({
+	description: z.string().nullable(),
+});
+
+const parseGitHubRepositoryDescription = (stdout: string) => {
+	const response = githubRepositoryResponseSchema.parse(JSON.parse(stdout));
+	return response.description ?? "";
 };
 
 const run = async (commands: string[], options: RunOptions): Promise<RunResult> => {
@@ -81,7 +95,7 @@ const run = async (commands: string[], options: RunOptions): Promise<RunResult> 
 	return { stdout, stderr, symbolicRef };
 };
 
-export const createGhSpawn = async (gh: string, options: RunOptions) => {
+export const createGhSpawn = (gh: string, options: RunOptions) => {
 	return {
 		setup: async () => {
 			await run([gh, "auth", "setup-git"], options);
@@ -90,12 +104,16 @@ export const createGhSpawn = async (gh: string, options: RunOptions) => {
 			const { stdout } = await run([gh, "api", "--paginate", path, "--jq", jq], options);
 			return stdout.trim().split("\n").filter(Boolean);
 		},
+		repository: async ({ owner, repo, url }: GitHubRepository) => {
+			const { stdout } = await run([gh, "api", `/repos/${owner}/${repo}`], options);
+			return { owner, repo, url, description: parseGitHubRepositoryDescription(stdout) };
+		},
 	};
 };
 
-export const createGitSpawn = async (git: string, options: RunOptions) => {
+export const createGitSpawn = (git: string, options: RunOptions) => {
 	return {
-		repository: (repositoryPath: string) => {
+		repository: (repositoryPath: string, repositoryOptions?: RepositoryOptions) => {
 			const removeStaleHeadLock = async () => {
 				const lockPath = path.join(repositoryPath, "HEAD.lock");
 				const stat = await statIfExists(lockPath);
@@ -112,6 +130,13 @@ export const createGitSpawn = async (git: string, options: RunOptions) => {
 				await fs.promises.writeFile(path.join(webInfoPath, "last-modified"), `${lastModified}\n`);
 			};
 
+			const writeDescription = async () => {
+				if (repositoryOptions === undefined) {
+					return;
+				}
+				await fs.promises.writeFile(path.join(repositoryPath, "description"), repositoryOptions.description);
+			};
+
 			return {
 				has: async () => {
 					return (await statIfExists(repositoryPath)) !== undefined;
@@ -123,6 +148,7 @@ export const createGitSpawn = async (git: string, options: RunOptions) => {
 					const result = await run([git, "clone", "--mirror", url, repositoryPath], options);
 					await run([git, "-C", repositoryPath, "lfs", "fetch", "--all", "origin"], options);
 					await writeWebLastModified();
+					await writeDescription();
 					return result;
 				},
 				fetch: async () => {
@@ -152,6 +178,7 @@ export const createGitSpawn = async (git: string, options: RunOptions) => {
 						await run([git, "-C", repositoryPath, "symbolic-ref", "HEAD", head], options);
 					}
 					await writeWebLastModified();
+					await writeDescription();
 				},
 			};
 		},

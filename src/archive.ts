@@ -2,11 +2,13 @@ import { exponentialBackoffFactory, runBackoff } from "./utils/backoff.ts";
 import type { GitHubRepository } from "./utils/git.ts";
 import { result } from "./utils/result.ts";
 
-export type ArchiveTarget = GitHubRepository;
+export type ArchiveTarget = GitHubRepository & {
+	description: string;
+};
 
 type SafeCommand = <T>(callback: () => Promise<T>) => Promise<T>;
 
-export const repositoryKey = ({ owner, repo }: ArchiveTarget) => `${owner}/${repo}`;
+export const repositoryKey = ({ owner, repo }: Pick<GitHubRepository, "owner" | "repo">) => `${owner}/${repo}`;
 
 export const createSafeCommand = (signal?: AbortSignal): SafeCommand => {
 	const maxRetries = 3;
