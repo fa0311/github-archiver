@@ -1,9 +1,9 @@
 import z from "zod";
 import { repositoryName } from "../repository.ts";
-import { type ApiClient, describeRepository, gitAuthArgs, pagenation } from "./client.ts";
+import { type ApiClient, describeRepository, gitAuthArgs, pagination } from "./client.ts";
 
 const repositorySchema = z.object({
-	clone_url: z.httpUrl().transform((value) => new URL(value)),
+	clone_url: z.httpUrl(),
 	description: z.string().nullable().optional(),
 });
 
@@ -16,10 +16,10 @@ export const createGitHubApi = (token?: string): ApiClient => {
 		headers.set("Authorization", `Bearer ${token}`);
 	}
 	return {
-		query: (url) => pagenation(url, headers),
+		query: (url) => pagination(url, headers),
 		parse: (value) => {
 			const parsed = repositorySchema.parse(JSON.parse(value));
-			return { url: parsed.clone_url, description: parsed.description ?? undefined };
+			return { url: new URL(parsed.clone_url), description: parsed.description ?? undefined };
 		},
 		describe: (url) => {
 			const endpoint = new URL(`/repos/${repositoryName(url)}`, "https://api.github.com");

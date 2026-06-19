@@ -1,6 +1,6 @@
 import { Args, Command, Flags } from "@oclif/core";
 import { Semaphore } from "async-mutex";
-import { createSafeCommand, type RepositoryLocator } from "../archive.ts";
+import type { RepositoryLocator } from "../utils/api/client.ts";
 import { createApi } from "../utils/api/index.ts";
 import { catchError } from "../utils/catch.ts";
 import { type RepositoryProvider, repositoryProviderSchema } from "../utils/config.ts";
@@ -10,6 +10,7 @@ import { formatDuration, info, success, title } from "../utils/log.ts";
 import { placeholder } from "../utils/placeholder.ts";
 import { progress } from "../utils/progress.ts";
 import { repositoryName } from "../utils/repository.ts";
+import { createSafeCommand } from "../utils/safecommand.ts";
 
 export default class Archive extends Command {
 	static description = "Archive Git repositories as local mirror clones";
@@ -77,8 +78,8 @@ export default class Archive extends Command {
 				result[name] = {
 					name: name,
 					path: placeholder(flags.output, { name, provider: flags.provider }),
-					url: new URL(input),
-					description: await safeCommand(() => api.describe(new URL(input))),
+					url: input,
+					description: await safeCommand(() => api.describe(input)),
 					gitArgs: api.gitArgs,
 				};
 			}
@@ -95,7 +96,7 @@ export default class Archive extends Command {
 						const exists = await repository.has();
 
 						if (exists) {
-							const duration = await formatDuration(() => safeCommand(async () => repository.fetch()));
+							const duration = await formatDuration(() => safeCommand(() => repository.fetch()));
 							multiBar.log(info(`Fetched ${name} in ${duration}`));
 						} else {
 							const duration = await formatDuration(() => safeCommand(() => repository.clone(url.toString())));

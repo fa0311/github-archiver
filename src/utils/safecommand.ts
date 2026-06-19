@@ -1,5 +1,5 @@
-import { exponentialBackoffFactory, runBackoff } from "./utils/backoff.ts";
-import { result } from "./utils/result.ts";
+import { exponentialBackoffFactory, runBackoff } from "./backoff.ts";
+import { result } from "./result.ts";
 
 type SafeCommand = <T>(callback: () => Promise<T>) => Promise<T>;
 
@@ -21,12 +21,4 @@ export const createSafeCommand = (signal?: AbortSignal): SafeCommand => {
 			return { type: "error", error: response.error };
 		});
 	};
-};
-
-export type RepositoryLocator = {
-	path: string;
-	name: string;
-	url: URL;
-	description?: string;
-	gitArgs: string[];
 };

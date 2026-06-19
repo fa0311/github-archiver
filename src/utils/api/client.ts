@@ -3,6 +3,14 @@ import z from "zod";
 
 export type RepositoryMetadata = { url: URL; description?: string };
 
+export type RepositoryLocator = {
+	path: string;
+	name: string;
+	url: URL;
+	description?: string;
+	gitArgs: string[];
+};
+
 export type ApiClient = {
 	query: (url: string) => Promise<string[]>;
 	parse: (value: string) => RepositoryMetadata;
@@ -26,7 +34,7 @@ export const describeRepository = async (url: string | URL, headers: Headers): P
 	return descriptionSchema.parse(JSON.parse(body)).description ?? undefined;
 };
 
-export const pagenation = async (url: string, headers: Headers) => {
+export const pagination = async (url: string, headers: Headers) => {
 	const pages: string[] = [];
 	let next: string | undefined = url;
 	while (next) {

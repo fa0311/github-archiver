@@ -3,7 +3,7 @@ import { Semaphore } from "async-mutex";
 import { CronJob } from "cron";
 import "dotenv/config";
 import pino from "pino";
-import { createSafeCommand, type RepositoryLocator } from "../archive.ts";
+import type { RepositoryLocator } from "../utils/api/client.ts";
 import { createApi } from "../utils/api/index.ts";
 import { parseConfig } from "../utils/config.ts";
 import { parseEnv } from "../utils/env.ts";
@@ -13,6 +13,7 @@ import { createJq } from "../utils/jq.ts";
 import { formatDuration } from "../utils/log.ts";
 import { placeholder } from "../utils/placeholder.ts";
 import { repositoryName } from "../utils/repository.ts";
+import { createSafeCommand } from "../utils/safecommand.ts";
 
 export default class Schedule extends Command {
 	static description = "Run scheduled archiving based on configuration file";
@@ -41,7 +42,10 @@ export default class Schedule extends Command {
 	};
 
 	static flags = {
-		runOnce: Flags.boolean(),
+		runOnce: Flags.boolean({
+			description: "Run the archive task once immediately without scheduling",
+			default: false,
+		}),
 		help: Flags.help(),
 		version: Flags.version(),
 	};
@@ -116,27 +120,25 @@ export default class Schedule extends Command {
 					}
 				})();
 
-				const promises = repositories.map(async (target) => {
+				const promises = repositories.map(async ({ name, path, url, description, gitArgs }) => {
 					await semaphore.runExclusive(async () => {
 						try {
-							const key = target.name;
-							logger.info(`Archiving repository: ${key}`);
-							const archivePath = placeholder(config.output, { name: target.name });
-							const repository = git.repository(archivePath, target.gitArgs);
+							logger.info(`Archiving repository: ${name}`);
+							const repository = git.repository(path, gitArgs);
 							const exists = await repository.has();
 
 							if (exists) {
 								const duration = await formatDuration(() => safeCommand(() => repository.fetch()));
-								logger.info(`Fetched ${key} in ${duration}`);
+								logger.info(`Fetched ${name} in ${duration}`);
 							} else {
-								const duration = await formatDuration(() => safeCommand(() => repository.clone(target.url.toString())));
-								logger.info(`Cloned ${key} in ${duration}`);
+								const duration = await formatDuration(() => safeCommand(() => repository.clone(url.toString())));
+								logger.info(`Cloned ${name} in ${duration}`);
 							}
 
 							await repository.writeWebLastModified();
-							await repository.writeDescription(target.description ?? "");
+							await repository.writeDescription(description ?? "");
 
-							logger.debug(`Finished archiving repository: ${key}`);
+							logger.debug(`Finished archiving repository: ${name}`);
 						} catch (error) {
 							completion?.error();
 							logger.error(error);

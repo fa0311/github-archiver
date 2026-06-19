@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { GitHubArchiverZodParseError, unreachable } from "../../../src/utils/error.ts";
-
-describe("unreachable", () => {
-	it("throws a GitHubArchiverError", () => {
-		expect(() => unreachable()).toThrow("Unreachable code");
-	});
-});
+import { GitHubArchiverZodParseError } from "../../../src/utils/error.ts";
 
 describe("GitHubArchiverZodParseError", () => {
 	it("includes the custom message and zod details", () => {

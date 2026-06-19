@@ -94,7 +94,7 @@ ARGUMENTS
 
 FLAGS
   --help     Show CLI help.
-  --runOnce
+  --runOnce  Run the archive task once immediately without scheduling
   --version  Show CLI version.
 
 DESCRIPTION

@@ -18,13 +18,17 @@ describe("ApiClient.parse", () => {
 	});
 
 	it("normalizes a GitLab item (http_url_to_repo)", () => {
-		const { url, description } = createGitLabApi("t").parse(JSON.stringify({ http_url_to_repo: "https://gitlab.com/g/p.git", description: "d" }));
+		const { url, description } = createGitLabApi("t").parse(
+			JSON.stringify({ http_url_to_repo: "https://gitlab.com/g/p.git", description: "d" }),
+		);
 		expect(url.href).toBe("https://gitlab.com/g/p.git");
 		expect(description).toBe("d");
 	});
 
 	it("normalizes a Gitea item", () => {
-		const { url, description } = createGiteaApi("t").parse(JSON.stringify({ clone_url: "https://gitea.example.com/o/p.git", description: "d" }));
+		const { url, description } = createGiteaApi("t").parse(
+			JSON.stringify({ clone_url: "https://gitea.example.com/o/p.git", description: "d" }),
+		);
 		expect(url.href).toBe("https://gitea.example.com/o/p.git");
 		expect(description).toBe("d");
 	});
@@ -62,7 +66,9 @@ describe("ApiClient.describe", () => {
 describe("ApiClient.query", () => {
 	it("follows Link pagination and returns each page body", async () => {
 		mockFetch((url) =>
-			url.endsWith("page=2") ? new Response("page2") : new Response("page1", { headers: { link: '<https://api.github.com/u?page=2>; rel="next"' } }),
+			url.endsWith("page=2")
+				? new Response("page2")
+				: new Response("page1", { headers: { link: '<https://api.github.com/u?page=2>; rel="next"' } }),
 		);
 
 		await expect(createGitHubApi("t").query("https://api.github.com/u")).resolves.toEqual(["page1", "page2"]);
