@@ -2,13 +2,25 @@ services:
   github-archiver:
     image: ghcr.io/fa0311/github-archiver:latest-scheduler
     container_name: github-archiver
+    restart: unless-stopped
     environment:
       GH_TOKEN: ${GH_TOKEN}
       TZ: ${TZ:-UTC}
     volumes:
-      - ./schedule.json:/app/schedule.json:ro
+      - ./schedule.jsonc:/app/schedule.jsonc:ro
       - ./archives:/app/archives
       - github-archiver-data:/app/data
 
+  cgit:
+    image: joseluisq/alpine-cgit
+    container_name: cgit
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - ./archives:/srv/git:ro
+      - cgit-cache:/var/cache/cgit
+
 volumes:
+  cgit-cache:
   github-archiver-data:
