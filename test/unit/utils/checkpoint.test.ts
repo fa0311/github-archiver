@@ -33,8 +33,8 @@ describe("parseConfig", () => {
 		await expect(parseConfig(file)).resolves.toEqual({
 			cron: "0 0 * * *",
 			runOnInit: false,
-			queries: [{ type: "url", url: "https://github.com/octocat/Hello-World" }],
-			output: "archives/{owner}/{repo}",
+			queries: [{ type: "url", provider: "github", url: new URL("https://github.com/octocat/Hello-World") }],
+			output: "archives/{name}",
 		});
 	});
 

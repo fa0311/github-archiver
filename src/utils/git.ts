@@ -1,140 +1,17 @@
-import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import z from "zod";
 import { statIfExists } from "./fs.ts";
-
-export type GitHubRepository = {
-	owner: string;
-	repo: string;
-	url: string;
-};
-
-export const parseGitHubRepositoryUrl = (url: string) => {
-	const github = new URLPattern({
-		protocol: "https",
-		hostname: "github.com",
-		pathname: "/:owner/:repo{.git}?",
-	});
-	const match = github.exec(url);
-	if (match) {
-		const { owner, repo } = match.pathname.groups;
-		return { owner, repo, url } as GitHubRepository;
-	}
-	throw new Error("Invalid GitHub repository URL");
-};
-
-type RunOptions = {
-	env?: NodeJS.ProcessEnv;
-	input?: string;
-	stdout?: (chunk: string) => void;
-	stderr?: (chunk: string) => void;
-};
-
-export type RunResult = {
-	stdout: string;
-	stderr: string;
-	symbolicRef: (name: string) => string | undefined;
-};
-
-type RepositoryOptions = {
-	description: string;
-};
-
-const githubRepositoryResponseSchema = z.object({
-	description: z.string().nullable(),
-});
-
-const parseGitHubRepositoryDescription = (stdout: string) => {
-	const response = githubRepositoryResponseSchema.parse(JSON.parse(stdout));
-	return response.description ?? "";
-};
-
-const run = async (commands: string[], options: RunOptions): Promise<RunResult> => {
-	const [stdout, stderr] = await new Promise<[string, string]>((resolve, reject) => {
-		const child = spawn(commands[0], commands.slice(1), {
-			stdio: ["pipe", "pipe", "pipe"],
-			env: options.env ?? process.env,
-		});
-		const output = ["", ""] as [string, string];
-
-		child.stdout.setEncoding("utf8");
-		child.stderr.setEncoding("utf8");
-		if (options.input) {
-			child.stdin.write(options.input);
-		}
-
-		child.stdout.on("data", (chunk) => {
-			options.stdout?.(chunk);
-			output[0] += chunk;
-		});
-		child.stderr.on("data", (chunk) => {
-			options.stderr?.(chunk);
-			output[1] += chunk;
-		});
-
-		child.once("error", reject);
-		child.once("close", (code, signal) => {
-			if (code === 0) {
-				resolve(output);
-				return;
-			}
-
-			reject(new Error(`${commands.join(" ")} failed: ${signal ?? code}\n${output[1]}`.trim()));
-		});
-	});
-
-	const symbolicRef = (name: string) => {
-		for (const line of stdout.split("\n")) {
-			const [ref, target] = line.split("\t", 2);
-			if (target === name && ref.startsWith("ref: ")) {
-				return ref.slice("ref: ".length);
-			}
-		}
-	};
-	return { stdout, stderr, symbolicRef };
-};
-
-export const createGhSpawn = (gh: string, options: RunOptions) => {
-	return {
-		setup: async () => {
-			await run([gh, "auth", "setup-git"], options);
-		},
-		api: async (path: string, jq: string) => {
-			const { stdout } = await run([gh, "api", "--paginate", path, "--jq", jq], options);
-			return stdout.trim().split("\n").filter(Boolean);
-		},
-		repository: async ({ owner, repo, url }: GitHubRepository) => {
-			const { stdout } = await run([gh, "api", `/repos/${owner}/${repo}`], options);
-			return { owner, repo, url, description: parseGitHubRepositoryDescription(stdout) };
-		},
-	};
-};
+import { type RunOptions, run } from "./spawn.ts";
 
 export const createGitSpawn = (git: string, options: RunOptions) => {
 	return {
-		repository: (repositoryPath: string, repositoryOptions?: RepositoryOptions) => {
+		repository: (repositoryPath: string, args: string[]) => {
 			const removeStaleHeadLock = async () => {
 				const lockPath = path.join(repositoryPath, "HEAD.lock");
 				const stat = await statIfExists(lockPath);
 				if (stat) {
 					await fs.promises.rm(lockPath, { force: true });
 				}
-			};
-
-			const writeWebLastModified = async () => {
-				const { stdout } = await run([git, "-C", repositoryPath, "log", "--all", "-1", "--format=%ct"], options);
-				const lastModified = new Date(Number(stdout) * 1000).toUTCString();
-				const webInfoPath = path.join(repositoryPath, "info", "web");
-				await fs.promises.mkdir(webInfoPath, { recursive: true });
-				await fs.promises.writeFile(path.join(webInfoPath, "last-modified"), `${lastModified}\n`);
-			};
-
-			const writeDescription = async () => {
-				if (repositoryOptions === undefined) {
-					return;
-				}
-				await fs.promises.writeFile(path.join(repositoryPath, "description"), repositoryOptions.description);
 			};
 
 			return {
@@ -145,10 +22,8 @@ export const createGitSpawn = (git: string, options: RunOptions) => {
 					await fs.promises.rm(repositoryPath, { recursive: true, force: true });
 				},
 				clone: async (url: string) => {
-					const result = await run([git, "clone", "--mirror", url, repositoryPath], options);
-					await run([git, "-C", repositoryPath, "lfs", "fetch", "--all", "origin"], options);
-					await writeWebLastModified();
-					await writeDescription();
+					const result = await run([git, ...args, "clone", "--mirror", url, repositoryPath], options);
+					await run([git, ...args, "-C", repositoryPath, "lfs", "fetch", "--all", "origin"], options);
 					return result;
 				},
 				fetch: async () => {
@@ -156,6 +31,7 @@ export const createGitSpawn = (git: string, options: RunOptions) => {
 					await run(
 						[
 							git,
+							...args,
 							"-c",
 							"gc.auto=0",
 							"-C",
@@ -170,15 +46,23 @@ export const createGitSpawn = (git: string, options: RunOptions) => {
 						options,
 					);
 					await removeStaleHeadLock();
-					await run([git, "-C", repositoryPath, "lfs", "fetch", "--all", "origin"], options);
-					const output = await run([git, "-C", repositoryPath, "ls-remote", "--symref", "origin", "HEAD"], options);
+					await run([git, ...args, "-C", repositoryPath, "lfs", "fetch", "--all", "origin"], options);
+					const output = await run([git, ...args, "-C", repositoryPath, "ls-remote", "--symref", "origin", "HEAD"], options);
 					const head = output.symbolicRef("HEAD");
 					if (head) {
 						await removeStaleHeadLock();
 						await run([git, "-C", repositoryPath, "symbolic-ref", "HEAD", head], options);
 					}
-					await writeWebLastModified();
-					await writeDescription();
+				},
+				writeDescription: async (description: string) => {
+					await fs.promises.writeFile(path.join(repositoryPath, "description"), description);
+				},
+				writeWebLastModified: async () => {
+					const { stdout } = await run([git, "-C", repositoryPath, "log", "--all", "-1", "--format=%ct"], options);
+					const lastModified = new Date(Number(stdout) * 1000).toUTCString();
+					const webInfoPath = path.join(repositoryPath, "info", "web");
+					await fs.promises.mkdir(webInfoPath, { recursive: true });
+					await fs.promises.writeFile(path.join(webInfoPath, "last-modified"), `${lastModified}\n`);
 				},
 			};
 		},

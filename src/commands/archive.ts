@@ -1,15 +1,18 @@
 import { Args, Command, Flags } from "@oclif/core";
 import { Semaphore } from "async-mutex";
-import { type ArchiveTarget, createSafeCommand, repositoryKey } from "../archive.ts";
+import { createSafeCommand, type RepositoryLocator } from "../archive.ts";
+import { createApi } from "../utils/api/index.ts";
 import { catchError } from "../utils/catch.ts";
+import { type RepositoryProvider, repositoryProviderSchema } from "../utils/config.ts";
 import { parseEnv } from "../utils/env.ts";
-import { createGhSpawn, createGitSpawn, parseGitHubRepositoryUrl } from "../utils/git.ts";
+import { createGitSpawn } from "../utils/git.ts";
 import { formatDuration, info, success, title } from "../utils/log.ts";
 import { placeholder } from "../utils/placeholder.ts";
 import { progress } from "../utils/progress.ts";
+import { repositoryName } from "../utils/repository.ts";
 
 export default class Archive extends Command {
-	static description = "Archive GitHub repositories as local mirror clones";
+	static description = "Archive Git repositories as local mirror clones";
 
 	static examples = [
 		{
@@ -26,14 +29,14 @@ export default class Archive extends Command {
 		},
 		{
 			description: "Archive with a custom output directory",
-			command: "<%= config.bin %> archive https://github.com/octocat/Hello-World --output=backups/{owner}/{repo}.git",
+			command: "<%= config.bin %> archive https://github.com/octocat/Hello-World --output=backups/{name}.git",
 		},
 	];
 
 	static args = {
-		input: Args.string({
+		input: Args.url({
 			required: true,
-			description: "HTTPS GitHub repository URL to archive",
+			description: "HTTPS repository URL to archive",
 			multiple: true,
 		}),
 	};
@@ -42,13 +45,18 @@ export default class Archive extends Command {
 		output: Flags.string({
 			char: "o",
 			description: "Output directory pattern",
-			default: "archives/{owner}/{repo}",
+			default: "archives/{name}",
 		}),
 		quiet: Flags.boolean({
 			char: "q",
 			description: "Suppress progress output",
 			default: false,
 		}),
+		provider: Flags.custom<RepositoryProvider>({
+			description: "Repository provider",
+			options: repositoryProviderSchema.options,
+			default: "github",
+		})(),
 		help: Flags.help(),
 		version: Flags.version(),
 	};
@@ -58,38 +66,44 @@ export default class Archive extends Command {
 		const { args, flags } = await this.parse(Archive);
 
 		const env = await parseEnv();
-		const gh = createGhSpawn(env.GH_PATH, { env });
 		const git = createGitSpawn(env.GIT_PATH, { env });
+		const api = createApi(flags.provider, env);
 		const safeCommand = createSafeCommand();
 
-		const repositories: ArchiveTarget[] = await (async () => {
-			const result: Record<string, ReturnType<typeof parseGitHubRepositoryUrl>> = {};
+		const repositories = await (async () => {
+			const result: Record<string, RepositoryLocator> = {};
 			for (const input of args.input) {
-				const parsed = parseGitHubRepositoryUrl(input);
-				result[repositoryKey(parsed)] = parsed;
+				const name = repositoryName(input);
+				result[name] = {
+					name: name,
+					path: placeholder(flags.output, { name, provider: flags.provider }),
+					url: new URL(input),
+					description: await safeCommand(() => api.describe(new URL(input))),
+					gitArgs: api.gitArgs,
+				};
 			}
-			return Promise.all(Object.values(result).map((repository) => safeCommand(() => gh.repository(repository))));
+			return Object.values(result);
 		})();
 
 		const semaphore = new Semaphore(5);
 
 		await progress({ hidden: flags.quiet }, async (multiBar) => {
 			await multiBar.create({ total: repositories.length, filename: "Repositories", hidden: repositories.length <= 1 }, async (bar) => {
-				const promises = repositories.map(async (target) => {
+				const promises = repositories.map(async ({ name, path, url, description, gitArgs }) => {
 					await semaphore.runExclusive(async () => {
-						const key = repositoryKey(target);
-
-						const archivePath = placeholder(flags.output, { owner: target.owner, repo: target.repo });
-						const repository = git.repository(archivePath, { description: target.description });
+						const repository = git.repository(path, gitArgs);
 						const exists = await repository.has();
 
 						if (exists) {
 							const duration = await formatDuration(() => safeCommand(async () => repository.fetch()));
-							multiBar.log(info(`Fetched ${key} in ${duration}`));
+							multiBar.log(info(`Fetched ${name} in ${duration}`));
 						} else {
-							const duration = await formatDuration(() => safeCommand(() => repository.clone(target.url)));
-							multiBar.log(info(`Cloned ${key} in ${duration}`));
+							const duration = await formatDuration(() => safeCommand(() => repository.clone(url.toString())));
+							multiBar.log(info(`Cloned ${name} in ${duration}`));
 						}
+
+						await repository.writeWebLastModified();
+						await repository.writeDescription(description ?? "");
 
 						bar.increment();
 					});

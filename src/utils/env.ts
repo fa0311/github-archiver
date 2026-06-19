@@ -9,9 +9,11 @@ const envSchema = z
 			.string()
 			.transform((val) => val.toLowerCase() === "true")
 			.default(false),
-		GH_TOKEN: z.string(),
-		GH_PATH: z.string().default("gh"),
+		GH_TOKEN: z.string().optional(),
 		GIT_PATH: z.string().default("git"),
+		JQ_PATH: z.string().default("jq"),
+		GITLAB_TOKEN: z.string().optional(),
+		GITEA_TOKEN: z.string().optional(),
 		HEARTBEAT_PATH: z.string().optional(),
 		COMPLETION_STATUS_PATH: z.string().optional(),
 		TZ: z.string().default("UTC"),

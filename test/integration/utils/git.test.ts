@@ -64,7 +64,7 @@ describe("createGitSpawn", () => {
 		const git = await createGit(sourcePath, archivePath);
 		const archive = await createGitSpawn("git", { env: git.env });
 		const base = await git.commit("README.md", "# fixture\n", { date: "Thu, 02 Jan 2020 03:04:05 +0000" });
-		const repository = archive.repository(archivePath, { description });
+		const repository = archive.repository(archivePath, []);
 		const headLockPath = path.join(archivePath, "HEAD.lock");
 		const descriptionPath = path.join(archivePath, "description");
 		const webLastModifiedPath = path.join(archivePath, "info", "web", "last-modified");
@@ -74,6 +74,8 @@ describe("createGitSpawn", () => {
 		const clone = async () => {
 			expect(await repository.has()).toBe(false);
 			await repository.clone(sourcePath);
+			await repository.writeWebLastModified();
+			await repository.writeDescription(description);
 			expect(await repository.has()).toBe(true);
 		};
 
@@ -124,17 +126,18 @@ describe("createGitSpawn", () => {
 		await clone();
 		await git.commit("updated.txt", "updated\n", { date: "Fri, 03 Jan 2020 04:05:06 +0000" });
 		await repository.fetch();
+		await repository.writeWebLastModified();
 
 		await expect(readWebLastModified()).resolves.toBe("Fri, 03 Jan 2020 04:05:06 GMT\n");
 	});
 
 	it("updates repository description after fetching", async () => {
-		const { archive, archivePath, git, clone, readDescription } = await createArchive("Old description");
-		const repository = archive.repository(archivePath, { description: "Updated description" });
+		const { repository, git, clone, readDescription } = await createArchive("Old description");
 
 		await clone();
 		await git.commit("updated.txt", "updated\n");
 		await repository.fetch();
+		await repository.writeDescription("Updated description");
 
 		await expect(readDescription()).resolves.toBe("Updated description");
 	});

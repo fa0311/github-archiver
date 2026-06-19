@@ -11,7 +11,7 @@ FROM node:24 AS runtime
 WORKDIR /app
 
 RUN apt-get update
-RUN apt-get install -y gh git git-lfs
+RUN apt-get install -y jq git git-lfs
 RUN rm -rf /var/lib/apt/lists/*
 
 COPY package.json pnpm-lock.yaml ./
@@ -25,7 +25,7 @@ CMD ["help"]
 
 FROM runtime AS scheduler
 ENTRYPOINT ["node", "./bin/run.js", "schedule"]
-CMD ["schedule.json", "--setup"]
+CMD ["schedule.json"]
 
 ENV HEARTBEAT_PATH=/tmp/heartbeat.epoch
 ENV COMPLETION_STATUS_PATH=/tmp/completion_status

@@ -10,7 +10,7 @@ The codebase is organized into distinct layers with clear responsibilities:
 
 - **Command Layer**: CLI interface, scheduler loop, and user interaction
 - **Archive Flow Layer**: Repository query expansion, deduplication, and archive execution
-- **Command Adapter Layer**: Git and GitHub CLI process execution
+- **Command Adapter Layer**: Git process execution and provider HTTP APIs (`fetch` + `jq`)
 - **Utility Layer**: Reusable helpers for retry, logging, placeholder expansion, and config parsing
 
 ### 2. Type Safety
@@ -21,7 +21,7 @@ The codebase is organized into distinct layers with clear responsibilities:
 
 ### 3. Resilience
 
-- Exponential backoff for transient Git/GitHub CLI failures
+- Exponential backoff for transient Git and provider API failures
 - Internal concurrency limiting for repository work
 - Health signal files for external monitoring
 
@@ -31,7 +31,7 @@ The codebase is organized into distinct layers with clear responsibilities:
 graph TD
     CLI[CLI Commands<br/>User-facing interface with argument parsing]
     Scheduler[Scheduler<br/>Cron-based repeated execution]
-    GitHub[GitHub Query Expansion<br/>URL and gh api queries]
+    GitHub[Query Expansion<br/>Provider URL and GitHub API queries]
     Archive[Archive Flow<br/>Deduplication, clone/fetch, progress/logging]
     Git[Git Mirror Operations<br/>clone --mirror and fetch]
     Health[Health Signals<br/>Heartbeat and completion status]
@@ -49,7 +49,7 @@ graph TD
 
 1. **Input Parsing**: CLI URLs or scheduled query definitions
 2. **Query Expansion**: Direct URLs and GitHub API query results become repository targets
-3. **Deduplication**: Repositories gathered from URLs and `gh api` responses are keyed by `owner/repo`
+3. **Deduplication**: Repositories gathered from URLs and GitHub API responses are keyed by `owner/repo`
 4. **Archive Coordination**: Repositories are processed with an internal concurrency limit
 5. **Mirror Operation**: Clone missing archives and `fetch` existing mirror directories
 

@@ -3,13 +3,16 @@ import { Semaphore } from "async-mutex";
 import { CronJob } from "cron";
 import "dotenv/config";
 import pino from "pino";
-import { type ArchiveTarget, createSafeCommand, repositoryKey } from "../archive.ts";
+import { createSafeCommand, type RepositoryLocator } from "../archive.ts";
+import { createApi } from "../utils/api/index.ts";
 import { parseConfig } from "../utils/config.ts";
 import { parseEnv } from "../utils/env.ts";
-import { createGhSpawn, createGitSpawn, parseGitHubRepositoryUrl } from "../utils/git.ts";
+import { createGitSpawn } from "../utils/git.ts";
 import { createCompletion, createHeartbeat } from "../utils/healthcheck.ts";
+import { createJq } from "../utils/jq.ts";
 import { formatDuration } from "../utils/log.ts";
 import { placeholder } from "../utils/placeholder.ts";
+import { repositoryName } from "../utils/repository.ts";
 
 export default class Schedule extends Command {
 	static description = "Run scheduled archiving based on configuration file";
@@ -39,7 +42,6 @@ export default class Schedule extends Command {
 
 	static flags = {
 		runOnce: Flags.boolean(),
-		setup: Flags.boolean(),
 		help: Flags.help(),
 		version: Flags.version(),
 	};
@@ -55,11 +57,7 @@ export default class Schedule extends Command {
 		});
 
 		const git = createGitSpawn(env.GIT_PATH, { env });
-		const gh = createGhSpawn(env.GH_PATH, { env });
-		if (flags.setup) {
-			await gh.setup();
-			logger.info("Git authentication setup completed");
-		}
+		const jq = createJq(env.JQ_PATH, { env });
 
 		const onTick = async () => {
 			const duration = await formatDuration(async () => {
@@ -68,31 +66,49 @@ export default class Schedule extends Command {
 				const safeCommand = createSafeCommand();
 				const semaphore = new Semaphore(5);
 
-				const repositories: ArchiveTarget[] = await (async () => {
-					const result: Record<string, ReturnType<typeof parseGitHubRepositoryUrl>> = {};
+				const repositories = await (async () => {
+					const result: Record<string, RepositoryLocator> = {};
 					for (const query of config.queries) {
+						const api = createApi(query.provider, env);
 						switch (query.type) {
 							case "url": {
-								const parsed = parseGitHubRepositoryUrl(query.url);
-								result[repositoryKey(parsed)] = parsed;
+								const name = repositoryName(query.url);
+								result[name] = {
+									name: name,
+									path: placeholder(config.output, { name, provider: query.provider }),
+									url: query.url,
+									description: await safeCommand(() => api.describe(query.url)),
+									gitArgs: api.gitArgs,
+								};
 								break;
 							}
 							case "api": {
-								const apiRepositories = await safeCommand(() => gh.api(query.path, query.jq));
-								for (const repo of apiRepositories) {
-									const parsed = parseGitHubRepositoryUrl(repo);
-									result[repositoryKey(parsed)] = parsed;
+								const pages = await safeCommand(() => api.query(query.path));
+								const lines = await safeCommand(async () => {
+									const filtered = await Promise.all(pages.map((page) => jq.filter(page, query.jq)));
+									return filtered.flat();
+								});
+								for (const line of lines) {
+									const { url, description } = api.parse(line);
+									const name = repositoryName(url);
+									result[name] = {
+										name: name,
+										path: placeholder(config.output, { name, provider: query.provider }),
+										url,
+										description,
+										gitArgs: api.gitArgs,
+									};
 								}
 								break;
 							}
 						}
 					}
 
-					return Promise.all(Object.values(result).map((repository) => safeCommand(() => gh.repository(repository))));
+					return Object.values(result);
 				})();
 
 				logger.info(`Found ${repositories.length} repositories to archive`);
-				logger.debug(`Archiving repositories: ${JSON.stringify(repositories.map(({ owner, repo }) => `${owner}/${repo}`))}`);
+				logger.debug(`Archiving repositories: ${JSON.stringify(repositories.map(({ name }) => name))}`);
 
 				const completion = (() => {
 					if (env.COMPLETION_STATUS_PATH) {
@@ -103,19 +119,22 @@ export default class Schedule extends Command {
 				const promises = repositories.map(async (target) => {
 					await semaphore.runExclusive(async () => {
 						try {
-							const key = repositoryKey(target);
+							const key = target.name;
 							logger.info(`Archiving repository: ${key}`);
-							const archivePath = placeholder(config.output, { owner: target.owner, repo: target.repo });
-							const repository = git.repository(archivePath, { description: target.description });
+							const archivePath = placeholder(config.output, { name: target.name });
+							const repository = git.repository(archivePath, target.gitArgs);
 							const exists = await repository.has();
 
 							if (exists) {
 								const duration = await formatDuration(() => safeCommand(() => repository.fetch()));
 								logger.info(`Fetched ${key} in ${duration}`);
 							} else {
-								const duration = await formatDuration(() => safeCommand(() => repository.clone(target.url)));
+								const duration = await formatDuration(() => safeCommand(() => repository.clone(target.url.toString())));
 								logger.info(`Cloned ${key} in ${duration}`);
 							}
+
+							await repository.writeWebLastModified();
+							await repository.writeDescription(target.description ?? "");
 
 							logger.debug(`Finished archiving repository: ${key}`);
 						} catch (error) {

@@ -2,27 +2,32 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A powerful CLI tool for archiving GitHub repositories as local mirror clones. Features scheduled execution, GitHub CLI integration, mirror sync, and health signal output for an efficient and robust archive experience.
+A powerful CLI tool for archiving GitHub, GitLab, and Gitea repositories as local mirror clones. Features scheduled execution, provider metadata lookup, mirror sync, and health signal output for an efficient and robust archive experience.
 
 ## ✨ Features
 
 - **Command Line Tool**: Archive repositories instantly by HTTPS clone URL
 - **Scheduler**: Automate periodic archive tasks with cron expressions
-- **GitHub CLI Integration**: Archive repository lists returned by `gh api`
+- **Provider Metadata**: Populate cgit descriptions from GitHub, GitLab, and Gitea repository metadata
+- **GitHub API Queries**: Expand repository lists from the GitHub API filtered with `jq`
 - **Mirror Sync**: Preserve branches, tags, deleted refs, force-pushed refs, and default branch changes
 - **Git LFS Support**: Mirror archives also fetch Git LFS objects
 - **Incremental Scheduler**: Scheduled runs clone missing repositories and `fetch` existing mirrors
 - **Docker Support**: Easy deployment with docker-compose
-- **Flexible Output**: Use `{owner}` and `{repo}` placeholders
+- **Flexible Output**: Use the `{name}` placeholder
 
 ## 📚 Quick Start
 
 ```bash
-# Set a GitHub token
+# Set tokens for the providers you use
 export GH_TOKEN=github_pat_xxx
+export GITLAB_TOKEN=glpat_xxx
+export GITEA_TOKEN=gitea_xxx
 
-# Archive a repository
+# Archive repositories
 github-archiver archive https://github.com/fa0311/github-archiver
+github-archiver archive --provider gitlab https://gitlab.com/gitlab-org/gitlab
+github-archiver archive --provider gitea https://gitea.com/gitea/tea
 
 # Archive repositories returned by GitHub CLI
 github-archiver archive $(gh api --paginate '/user/repos?per_page=100' --jq '.[].clone_url')
@@ -75,19 +80,23 @@ The scheduler config is parsed as JSONC, so comments are allowed. The CLI defaul
   "runOnInit": false, // Execute immediately on startup
   "queries": [
     // Archive targets
-    { "type": "url", "url": "https://github.com/fa0311/github-archiver" },
+    { "type": "url", "provider": "github", "url": "https://github.com/fa0311/github-archiver" },
+    { "type": "url", "provider": "gitlab", "url": "https://gitlab.com/gitlab-org/gitlab" },
+    { "type": "url", "provider": "gitea", "url": "https://gitea.com/gitea/tea" },
     {
       "type": "api",
-      "path": "/user/repos?per_page=100",
-      "jq": ".[].clone_url",
+      "provider": "github",
+      "path": "https://api.github.com/user/repos?per_page=100",
+      "jq": ".[]",
     },
     {
       "type": "api",
-      "path": "/user/starred?per_page=100",
-      "jq": ".[].clone_url",
+      "provider": "gitlab",
+      "path": "https://gitlab.com/api/v4/projects?membership=true&per_page=100",
+      "jq": ".[] | select(.archived | not)",
     },
   ],
-  "output": "archives/{owner}/{repo}" // Output path (placeholders available)
+  "output": "archives/{name}" // Output path (placeholders available)
 }
 ```
 
@@ -97,15 +106,21 @@ For detailed configuration schema, see [src/utils/config.ts](src/utils/config.ts
 
 Can be set via `.env` file or system environment variables.
 
-#### GitHub Settings (All commands)
+#### Provider Settings (All commands)
 
 ```bash
-# Required by the CLI and used by gh api/scheduled queries
+# GitHub metadata, `queries[].type = "api"`, and private clone credentials.
 GH_TOKEN=github_pat_xxx
 
+# GitLab metadata and private clone credentials.
+GITLAB_TOKEN=glpat_xxx
+
+# Gitea metadata and private clone credentials.
+GITEA_TOKEN=gitea_xxx
+
 # Optional command paths
-GH_PATH=gh
 GIT_PATH=git
+JQ_PATH=jq
 ```
 
 ### GitHub Token
@@ -146,11 +161,7 @@ If you already authenticated with GitHub CLI, you can reuse that token:
 export GH_TOKEN="$(gh auth token)"
 ```
 
-For private repositories over HTTPS, run GitHub CLI's Git setup once so `git clone --mirror` and `git fetch` can use the same credentials:
-
-```bash
-gh auth setup-git
-```
+For private repositories over HTTPS, the provider token is injected into `git clone --mirror` and `git fetch` automatically via `http.extraHeader`, so no separate Git credential setup is required.
 
 #### Schedule Command Only
 
@@ -186,7 +197,7 @@ github-archiver archive $(gh api --paginate '/user/starred?per_page=100' --jq '.
 github-archiver archive $(gh api --paginate '/orgs/ORG/repos?per_page=100' --jq '.[].clone_url')
 ```
 
-The scheduler uses the same `gh api --paginate <path> --jq <jq>` flow through `queries[].type = "api"`. During scheduled runs, existing archive directories are updated with `git fetch`, and missing ones are cloned.
+`queries[].type = "url"` supports GitHub, GitLab, and configured Gitea hosts. `queries[].type = "api"` fetches the full API URL in `path`, follows pagination via the `Link` header, and pipes each page through the `jq` binary to select repositories. The filter just emits one repository object per line (e.g. `.[]`, optionally with `select(...)` to filter) — the `provider` client reads each provider's own clone-URL field and description, so the jq stays the same across providers. `provider` also selects which token is sent (GitHub `Authorization: Bearer`, GitLab `PRIVATE-TOKEN`, Gitea `Authorization: token`). During scheduled runs, existing archive directories are updated with `git fetch`, and missing ones are cloned.
 Git LFS repositories are synced with `git lfs fetch --all origin` after each clone and fetch, so the archive includes LFS objects as well.
 
 ## 🎨 Placeholders
@@ -195,8 +206,7 @@ Available placeholders for output paths:
 
 ### Output Path
 
-- `{owner}` - Repository owner or organization
-- `{repo}` - Repository name
+- `{name}` - Full repository path (e.g. `octocat/Hello-World`, or `group/subgroup/project` for nested GitLab groups)
 
 **Examples:**
 
@@ -205,7 +215,7 @@ Available placeholders for output paths:
 github-archiver archive https://github.com/octocat/Hello-World
 
 # Custom output
-github-archiver archive https://github.com/octocat/Hello-World --output "backups/{owner}/{repo}.git"
+github-archiver archive https://github.com/octocat/Hello-World --output "backups/{name}.git"
 
 # Archive multiple repositories from GitHub CLI
 github-archiver archive $(gh api --paginate '/user/repos?per_page=100' --jq '.[].clone_url')
@@ -219,7 +229,7 @@ github-archiver archive $(gh api --paginate '/user/repos?per_page=100' --jq '.[]
 - pnpm
 - Git
 - Git LFS
-- GitHub CLI (`gh`)
+- `jq` for `queries[].type = "api"`
 
 ### Build
 
