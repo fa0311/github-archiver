@@ -72,13 +72,16 @@ export default class Schedule extends Command {
 					const result: Record<string, ArchiveTarget> = {};
 					for (const query of config.queries) {
 						switch (query.type) {
-							case "url":
-								result[repositoryKey(parseGitHubRepositoryUrl(query.url))] = parseGitHubRepositoryUrl(query.url);
+							case "url": {
+								const parsed = parseGitHubRepositoryUrl(query.url);
+								result[repositoryKey(parsed)] = parsed;
 								break;
+							}
 							case "api": {
 								const apiRepositories = await safeCommand(() => gh.api(query.path, query.jq));
 								for (const repo of apiRepositories) {
-									result[repositoryKey(parseGitHubRepositoryUrl(repo))] = parseGitHubRepositoryUrl(repo);
+									const parsed = parseGitHubRepositoryUrl(repo);
+									result[repositoryKey(parsed)] = parsed;
 								}
 								break;
 							}

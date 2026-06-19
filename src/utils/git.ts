@@ -99,11 +99,17 @@ export const createGitSpawn = async (git: string, options: RunOptions) => {
 			const removeStaleHeadLock = async () => {
 				const lockPath = path.join(repositoryPath, "HEAD.lock");
 				const stat = await statIfExists(lockPath);
-				if (!stat) {
-					return;
+				if (stat) {
+					await fs.promises.rm(lockPath, { force: true });
 				}
+			};
 
-				await fs.promises.rm(lockPath, { force: true });
+			const writeWebLastModified = async () => {
+				const { stdout } = await run([git, "-C", repositoryPath, "log", "--all", "-1", "--format=%ct"], options);
+				const lastModified = new Date(Number(stdout) * 1000).toUTCString();
+				const webInfoPath = path.join(repositoryPath, "info", "web");
+				await fs.promises.mkdir(webInfoPath, { recursive: true });
+				await fs.promises.writeFile(path.join(webInfoPath, "last-modified"), `${lastModified}\n`);
 			};
 
 			return {
@@ -116,6 +122,7 @@ export const createGitSpawn = async (git: string, options: RunOptions) => {
 				clone: async (url: string) => {
 					const result = await run([git, "clone", "--mirror", url, repositoryPath], options);
 					await run([git, "-C", repositoryPath, "lfs", "fetch", "--all", "origin"], options);
+					await writeWebLastModified();
 					return result;
 				},
 				fetch: async () => {
@@ -144,6 +151,7 @@ export const createGitSpawn = async (git: string, options: RunOptions) => {
 						await removeStaleHeadLock();
 						await run([git, "-C", repositoryPath, "symbolic-ref", "HEAD", head], options);
 					}
+					await writeWebLastModified();
 				},
 			};
 		},

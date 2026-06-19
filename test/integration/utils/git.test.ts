@@ -19,10 +19,12 @@ const createGit = async (cwd: string, archivePath: string) => {
 		return stdout.trim();
 	};
 
-	const commit = async (file: string, content: string) => {
+	const commit = async (file: string, content: string, commitOptions?: { date?: string }) => {
 		await fs.promises.writeFile(path.join(cwd, file), content);
 		await run("add", file);
-		await run("commit", "--allow-empty-message", "-m", "");
+
+		const commitEnv = commitOptions?.date ? { ...env, GIT_AUTHOR_DATE: commitOptions.date, GIT_COMMITTER_DATE: commitOptions.date } : env;
+		await promisify(execFile)("git", ["commit", "--allow-empty-message", "-m", ""], { cwd, env: commitEnv });
 		return run("rev-parse", "HEAD");
 	};
 
@@ -61,9 +63,11 @@ describe("createGitSpawn", () => {
 
 		const git = await createGit(sourcePath, archivePath);
 		const archive = await createGitSpawn("git", { env: git.env });
-		const base = await git.commit("README.md", "# fixture\n");
+		const base = await git.commit("README.md", "# fixture\n", { date: "Thu, 02 Jan 2020 03:04:05 +0000" });
 		const repository = archive.repository(archivePath);
 		const headLockPath = path.join(archivePath, "HEAD.lock");
+		const webLastModifiedPath = path.join(archivePath, "info", "web", "last-modified");
+		const readWebLastModified = () => fs.promises.readFile(webLastModifiedPath, "utf8");
 
 		const clone = async () => {
 			expect(await repository.has()).toBe(false);
@@ -71,7 +75,7 @@ describe("createGitSpawn", () => {
 			expect(await repository.has()).toBe(true);
 		};
 
-		return { archive, repository, headLockPath, base, git, clone };
+		return { archive, repository, headLockPath, readWebLastModified, base, git, clone };
 	};
 
 	it("clones a mirror with local branches and tags", async () => {
@@ -86,6 +90,24 @@ describe("createGitSpawn", () => {
 		await expect(git.ref("refs/heads/main")).resolves.toBe(base);
 		await expect(git.ref("refs/heads/feature")).resolves.toBe(feature);
 		await expect(git.ref("refs/tags/v1")).resolves.toBe(base);
+	});
+
+	it("writes web last-modified after cloning", async () => {
+		const { clone, readWebLastModified } = await createArchive();
+
+		await clone();
+
+		await expect(readWebLastModified()).resolves.toBe("Thu, 02 Jan 2020 03:04:05 GMT\n");
+	});
+
+	it("updates web last-modified after fetching", async () => {
+		const { repository, git, clone, readWebLastModified } = await createArchive();
+
+		await clone();
+		await git.commit("updated.txt", "updated\n", { date: "Fri, 03 Jan 2020 04:05:06 +0000" });
+		await repository.fetch();
+
+		await expect(readWebLastModified()).resolves.toBe("Fri, 03 Jan 2020 04:05:06 GMT\n");
 	});
 
 	it("fetches branches and tags created after the mirror clone", async () => {
